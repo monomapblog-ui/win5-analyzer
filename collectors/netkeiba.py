@@ -1,11 +1,10 @@
-"""netkeibaからWIN5結果・レース結果・馬プロフィールを収集（同期版）
+"""netkeibaからWIN5結果・レース結果を収集
 
-主要URL:
-  WIN5結果一覧: https://db.netkeiba.com/?pid=win5_list&year=YYYY
-  WIN5詳細:     https://race.netkeiba.com/top/win5.html?kaisai_date=YYYYMMDD
-  レース結果:   https://db.netkeiba.com/race/RACEID/
-  出馬表:       https://race.netkeiba.com/race/shutuba.html?race_id=RACEID
-  馬情報:       https://db.netkeiba.com/horse/HORSEID/
+確認済みURL:
+  WIN5過去一覧: https://race.netkeiba.com/top/win5_results.html
+                → win5.html?date=YYYYMMDD 形式のリンク一覧
+  WIN5詳細:     https://race.netkeiba.com/top/win5.html?date=YYYYMMDD
+  レース結果:   https://race.netkeiba.com/race/result.html?race_id=RACEID
 """
 import re
 import time
@@ -21,8 +20,7 @@ load_dotenv()
 DELAY       = float(os.getenv("REQUEST_DELAY_SECONDS", "2.0"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 
-NETKEIBA_DB   = "https://db.netkeiba.com"
-NETKEIBA_RACE = "https://race.netkeiba.com"
+BASE = "https://race.netkeiba.com/top"
 
 HEADERS = {
     "User-Agent": (
@@ -30,141 +28,173 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    "Referer": "https://race.netkeiba.com/top/win5.html",
 }
 
 
+# ─────────────────────────────────────────────
+# HTTPクライアント
+# ─────────────────────────────────────────────
+
 def _get(url: str) -> httpx.Response:
-    """レート制限・リトライ付き同期GETリクエスト"""
     for attempt in range(MAX_RETRIES):
         time.sleep(DELAY)
         try:
             resp = httpx.get(url, headers=HEADERS, timeout=30.0, follow_redirects=True)
-            if resp.status_code == 200:
-                return resp
-            if resp.status_code == 403:
-                raise httpx.HTTPStatusError(
-                    f"403 Forbidden: {url}", request=resp.request, response=resp
-                )
             resp.raise_for_status()
+            return resp
         except (httpx.TimeoutException, httpx.NetworkError) as e:
             if attempt == MAX_RETRIES - 1:
                 raise
             wait = 2 ** (attempt + 1)
-            print(f"    リトライ {attempt+1}/{MAX_RETRIES} ({wait}s待機): {e}")
+            print(f"    リトライ {attempt+1}/{MAX_RETRIES} ({wait}s): {e}")
             time.sleep(wait)
     raise RuntimeError(f"取得失敗: {url}")
 
 
 # ─────────────────────────────────────────────
-# WIN5 一覧
+# WIN5 過去日付一覧
 # ─────────────────────────────────────────────
 
-def fetch_win5_list(year: int) -> list[dict]:
+def fetch_win5_dates(target_years: list[int] | None = None) -> list[str]:
     """
-    指定年のWIN5開催一覧を取得する。
-
-    返り値の各要素:
-      held_date  : date
-      race_ids   : list[str]  対象5レースのrace_id
-      payout     : int | None 払戻金（円）
-      unit_count : int | None 的中口数
+    win5_results.html から過去全WIN5の日付文字列リストを取得する。
+    返り値: ['20260607', '20260606', ...] （新しい順）
+    target_years 指定時はその年のみ返す。
     """
-    url = f"{NETKEIBA_DB}/?pid=win5_list&year={year}"
+    url = f"{BASE}/win5_results.html"
     resp = _get(url)
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
-    results = []
-    table = soup.find("table", class_=re.compile(r"win5|nk_tb_common"))
-    if table is None:
-        table = soup.find("table")
-    if table is None:
-        return results
+    dates = []
+    for a in soup.find_all("a", href=True):
+        m = re.search(r"win5\.html\?date=(\d{8})", a["href"])
+        if m:
+            dates.append(m.group(1))
 
-    for row in table.find_all("tr"):
-        cells = row.find_all("td")
-        if len(cells) < 3:
-            continue
-        held_date = _parse_date(cells[0].get_text(strip=True))
-        if not held_date:
-            continue
+    # 今週分（win5.html のナビゲーションリンク）も追加
+    url2 = f"{BASE}/win5.html"
+    resp2 = _get(url2)
+    soup2 = BeautifulSoup(resp2.content, "lxml", from_encoding="euc-jp")
+    for a in soup2.find_all("a", href=True):
+        m = re.search(r"win5\.html\?(?:date=|idx=)(\d+)", a["href"])
+        if m:
+            val = m.group(1)
+            if len(val) == 8:  # date=YYYYMMDD 形式のみ
+                if val not in dates:
+                    dates.append(val)
 
-        race_ids = []
-        for a in cells[1].find_all("a", href=True):
-            rid = _extract_race_id(a["href"])
-            if rid:
-                race_ids.append(rid)
+    # 重複除去・ソート（新しい順）
+    dates = sorted(set(dates), reverse=True)
 
-        payout     = _parse_money(cells[2].get_text(strip=True)) if len(cells) > 2 else None
-        unit_count = _parse_int(cells[3].get_text(strip=True))   if len(cells) > 3 else None
+    if target_years:
+        dates = [d for d in dates if int(d[:4]) in target_years]
 
-        results.append({
-            "held_date":  held_date,
-            "race_ids":   race_ids,
-            "payout":     payout,
-            "unit_count": unit_count,
-        })
-
-    return results
+    return dates
 
 
 # ─────────────────────────────────────────────
-# WIN5 詳細（1開催分の5レース + 払戻）
+# WIN5 詳細（1日分）
 # ─────────────────────────────────────────────
 
-def fetch_win5_detail(held_date: date) -> dict:
+def fetch_win5_by_date(date_str: str) -> dict | None:
     """
-    WIN5詳細ページから対象5レース・勝ち馬人気・払戻を取得する。
+    win5.html?date=YYYYMMDD から1開催分のデータを取得する。
+
+    返り値:
+      held_date   : date
+      slots       : list[dict]
+        slot_number      : 1〜5
+        race_id          : str (12桁)
+        venue_race_name  : str
+        winner_horse_name: str
+        winner_horse_id  : str
+      payout      : int | None
+      unit_count  : int | None
     """
-    date_str = held_date.strftime("%Y%m%d")
-    url = f"{NETKEIBA_RACE}/top/win5.html?kaisai_date={date_str}"
+    url = f"{BASE}/win5.html?date={date_str}"
     resp = _get(url)
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+
+    # データなし判定
+    no_data = soup.find("p", string=re.compile(r"win5データはありません"))
+    if no_data:
+        return None
+
+    held_date = _parse_date_from_title(soup)
+    if held_date is None:
+        return None
+
+    # 対象レーステーブル（win5raceresult2）
+    table = soup.find("table", class_="win5raceresult2")
+    if table is None:
+        return None
+
+    rows = table.find_all("tr")
+    # row[0]: ヘッダ（1〜5レース）
+    # row[1]: レース名 + race_idリンク
+    # row[2]: 勝ち馬名 + horse_idリンク
+    # row[3]: 単勝人気（空欄 → レース結果ページから取得）
+    # row[4]: 残り票数
+
+    race_row   = rows[1] if len(rows) > 1 else None
+    winner_row = rows[2] if len(rows) > 2 else None
 
     slots = []
-    race_blocks = soup.select(".Win5Race, .win5_race, li.Win5RaceList")
-    if not race_blocks:
-        race_blocks = soup.select("table.win5_table tr, table tr")
+    if race_row and winner_row:
+        race_cells   = race_row.find_all(["td", "th"])
+        winner_cells = winner_row.find_all(["td", "th"])
 
-    for i, block in enumerate(race_blocks[:5], start=1):
-        text     = block.get_text(separator=" ", strip=True)
-        race_id  = None
-        for a in block.find_all("a", href=True):
-            rid = _extract_race_id(a["href"])
-            if rid:
-                race_id = rid
-                break
+        for slot_num in range(1, 6):
+            rc = race_cells[slot_num]   if len(race_cells)   > slot_num else None
+            wc = winner_cells[slot_num] if len(winner_cells) > slot_num else None
 
-        venue     = _extract_venue(block)
-        race_name = _extract_race_name(block)
+            # race_id
+            race_id = None
+            if rc:
+                a = rc.find("a", href=True)
+                if a:
+                    m = re.search(r"race_id=(\d{12})", a["href"])
+                    if m:
+                        race_id = m.group(1)
 
-        winner_name = None
-        winner_pop  = None
-        winner_tag  = block.find(class_=re.compile(r"winner|Win|horse", re.I))
-        if winner_tag:
-            winner_name = winner_tag.get_text(strip=True)
-        pop_match = re.search(r"(\d+)番人気", text)
-        if pop_match:
-            winner_pop = int(pop_match.group(1))
+            # 勝ち馬名
+            winner_name = wc.get_text(strip=True) if wc else None
 
-        slots.append({
-            "slot_number":       i,
-            "race_id":           race_id,
-            "venue":             venue,
-            "race_name":         race_name,
-            "winner_horse_name": winner_name,
-            "winner_popularity": winner_pop,
-        })
+            # 勝ち馬horse_id
+            winner_horse_id = None
+            if wc:
+                a = wc.find("a", href=True)
+                if a:
+                    m = re.search(r"/horse/([^/?]+)", a["href"])
+                    if m:
+                        winner_horse_id = m.group(1)
 
-    payout_text = soup.get_text()
-    payout      = None
-    unit_count  = None
-    pm = re.search(r"払戻金[^\d]*([\d,]+)円", payout_text)
-    if pm:
-        payout = _parse_money(pm.group(1))
-    um = re.search(r"的中口数[^\d]*(\d+)", payout_text)
-    if um:
-        unit_count = int(um.group(1))
+            slots.append({
+                "slot_number":       slot_num,
+                "race_id":           race_id,
+                "venue_race_name":   rc.get_text(strip=True) if rc else None,
+                "winner_horse_name": winner_name,
+                "winner_horse_id":   winner_horse_id,
+                "winner_popularity": None,  # レース結果ページで補完
+            })
+
+    # 払戻・的中票数
+    payout     = None
+    unit_count = None
+    for table_w in soup.find_all("table", class_="Win5_Table"):
+        for row in table_w.find_all("tr"):
+            cells = row.find_all(["td", "th"])
+            if len(cells) < 2:
+                continue
+            key = cells[0].get_text(strip=True)
+            val = cells[1].get_text(strip=True)
+            if "払戻金" in key:
+                payout = _parse_money(val)
+            elif "的中票数" in key:
+                unit_count = _parse_int(val)
 
     return {
         "held_date":  held_date,
@@ -175,96 +205,113 @@ def fetch_win5_detail(held_date: date) -> dict:
 
 
 # ─────────────────────────────────────────────
-# レース結果
+# レース結果（勝ち馬の人気取得）
 # ─────────────────────────────────────────────
 
 def fetch_race_result(race_id: str) -> dict:
     """
     レース結果ページから全出走馬の着順・人気・オッズを取得する。
+    URL: https://race.netkeiba.com/race/result.html?race_id=RACEID
+
+    返り値:
+      race_id  : str
+      entries  : list[dict]
+        finish_position, frame_number, horse_number,
+        horse_name, horse_id, popularity, odds
     """
-    url = f"{NETKEIBA_DB}/race/{race_id}/"
+    url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
     resp = _get(url)
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
     entries = []
-    table = soup.find("table", class_=re.compile(r"race_table_01|race_result"))
+
+    # レース結果テーブル: class="RaceTable01" または "race_table_01"
+    table = soup.find("table", class_=re.compile(r"RaceTable01|race_table_01"))
     if table is None:
-        table = soup.find("table")
+        table = soup.find("table", id=re.compile(r"result|Result"))
+    if table is None:
+        # フォールバック: tbody内の最初のテーブル
+        for t in soup.find_all("table"):
+            rows = t.find_all("tr")
+            if len(rows) > 3:
+                table = t
+                break
+
     if table is None:
         return {"race_id": race_id, "entries": entries}
 
     for row in table.find_all("tr"):
         cells = row.find_all("td")
-        if len(cells) < 11:
+        if len(cells) < 5:
             continue
+
         finish_pos = _parse_int(cells[0].get_text())
         if finish_pos is None:
             continue
 
+        # horse_id
         horse_id   = None
-        horse_link = cells[3].find("a", href=True)
-        if horse_link:
-            m = re.search(r"/horse/([^/]+)/?", horse_link["href"])
-            if m:
-                horse_id = m.group(1)
+        for cell in cells:
+            a = cell.find("a", href=re.compile(r"/horse/"))
+            if a:
+                m = re.search(r"/horse/([^/?]+)", a["href"])
+                if m:
+                    horse_id = m.group(1)
+                break
+
+        # 馬名
+        horse_name = None
+        for cell in cells:
+            a = cell.find("a", href=re.compile(r"/horse/"))
+            if a:
+                horse_name = a.get_text(strip=True)
+                break
+
+        # 人気・オッズはtable内の列順に依存
+        # 一般的な列順: 着順|枠|馬番|馬名|性齢|斤量|騎手|タイム|着差|人気|単勝
+        popularity = _parse_int(cells[9].get_text())  if len(cells) > 9  else None
+        odds       = _parse_float(cells[10].get_text()) if len(cells) > 10 else None
 
         entries.append({
             "finish_position": finish_pos,
-            "frame_number":    _parse_int(cells[1].get_text()),
-            "horse_number":    _parse_int(cells[2].get_text()),
-            "horse_name":      cells[3].get_text(strip=True),
+            "frame_number":    _parse_int(cells[1].get_text()) if len(cells) > 1 else None,
+            "horse_number":    _parse_int(cells[2].get_text()) if len(cells) > 2 else None,
+            "horse_name":      horse_name,
             "horse_id":        horse_id,
-            "popularity":      _parse_int(cells[10].get_text()),
-            "odds":            _parse_float(cells[9].get_text()),
+            "popularity":      popularity,
+            "odds":            odds,
         })
 
     return {"race_id": race_id, "entries": entries}
 
 
 # ─────────────────────────────────────────────
-# 馬プロフィール
-# ─────────────────────────────────────────────
-
-def fetch_horse_profile(horse_id: str) -> dict:
-    url = f"{NETKEIBA_DB}/horse/{horse_id}/"
-    resp = _get(url)
-    soup = BeautifulSoup(resp.text, "lxml")
-
-    profile = {"horse_id": horse_id}
-    name_tag = soup.find("h1", class_=re.compile(r"horse_title|HorseName"))
-    if name_tag:
-        profile["name"] = name_tag.get_text(strip=True)
-
-    dl = soup.find("dl", class_=re.compile(r"db_prof_table|HorseData"))
-    if dl:
-        for dt, dd in zip(dl.find_all("dt"), dl.find_all("dd")):
-            key = dt.get_text(strip=True)
-            val = dd.get_text(strip=True)
-            if "生年月日" in key:
-                m = re.search(r"(\d{4})", val)
-                if m:
-                    profile["birth_year"] = int(m.group(1))
-            elif "性" in key:
-                profile["sex"] = val[:2]
-
-    return profile
-
-
-# ─────────────────────────────────────────────
 # 内部ヘルパー
 # ─────────────────────────────────────────────
 
-def _parse_date(text: str) -> date | None:
-    m = re.search(r"(\d{4})[年/\-\.](\d{1,2})[月/\-\.](\d{1,2})", text)
-    if m:
-        try:
-            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        except ValueError:
-            return None
+def _parse_date_from_title(soup) -> date | None:
+    """<title>WIN5対象レース | 2026年6月6日 ... から日付を抽出"""
+    title = soup.find("title")
+    if title:
+        m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", title.get_text())
+        if m:
+            try:
+                return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            except ValueError:
+                pass
     return None
 
 
 def _parse_money(text: str) -> int | None:
+    # "315万9870円" → 3159870、"1,234,567円" → 1234567
+    text = text.replace(",", "")
+    # 万円単位
+    m = re.search(r"(\d+)万(\d{1,4})円", text)
+    if m:
+        return int(m.group(1)) * 10000 + int(m.group(2))
+    m = re.search(r"(\d+)万円", text)
+    if m:
+        return int(m.group(1)) * 10000
     digits = re.sub(r"[^\d]", "", text)
     return int(digits) if digits else None
 
@@ -284,31 +331,3 @@ def _parse_float(text: str) -> float | None:
         return float(s) if s else None
     except ValueError:
         return None
-
-
-def _extract_race_id(href: str) -> str | None:
-    m = re.search(r"race_id=(\d{12})", href)
-    if m:
-        return m.group(1)
-    m = re.search(r"/race/(\d{12})/?", href)
-    if m:
-        return m.group(1)
-    return None
-
-
-def _extract_venue(tag) -> str | None:
-    venue_tag = tag.find(class_=re.compile(r"venue|place|Venue", re.I))
-    if venue_tag:
-        return venue_tag.get_text(strip=True)
-    text = tag.get_text()
-    for v in ["札幌","函館","福島","新潟","東京","中山","中京","京都","阪神","小倉"]:
-        if v in text:
-            return v
-    return None
-
-
-def _extract_race_name(tag) -> str | None:
-    name_tag = tag.find(class_=re.compile(r"race_name|RaceName|name", re.I))
-    if name_tag:
-        return name_tag.get_text(strip=True)
-    return None
