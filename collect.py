@@ -47,7 +47,13 @@ async def collect_year(year: int, list_only: bool = False, force: bool = False):
     await init_db()
     log.info(f"=== {year}年 WIN5データ収集開始 ===")
 
-    win5_list = await fetch_win5_list(year)
+    try:
+        win5_list = await fetch_win5_list(year)
+    except Exception as e:
+        log.error(f"WIN5一覧の取得に失敗しました: {e}")
+        log.error("ローカルPCで実行しているか確認してください。")
+        return
+
     log.info(f"WIN5開催: {len(win5_list)} 件")
 
     if not win5_list:

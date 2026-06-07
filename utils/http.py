@@ -45,5 +45,13 @@ class RateLimitedClient:
     async def get(self, url: str, **kwargs) -> httpx.Response:
         await asyncio.sleep(self._delay)
         response = await self._client.get(url, **kwargs)
+        if response.status_code == 403:
+            raise httpx.HTTPStatusError(
+                f"403 Forbidden: {url}\n"
+                "  → このリモート環境からはnetkeibaにアクセスできません。\n"
+                "  → ローカルPCで実行してください。",
+                request=response.request,
+                response=response,
+            )
         response.raise_for_status()
         return response
