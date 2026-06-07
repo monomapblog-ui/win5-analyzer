@@ -1,4 +1,4 @@
-"""WIN5結果ページの構造確認"""
+"""WIN5詳細ページの日付・構造確認"""
 import httpx
 from bs4 import BeautifulSoup
 
@@ -17,45 +17,42 @@ BASE = "https://race.netkeiba.com/top"
 
 with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
 
-    # ① 過去結果一覧ページ
-    print("="*60)
-    print("① win5_results.html")
-    resp = client.get(f"{BASE}/win5_results.html")
-    print(f"ステータス: {resp.status_code}  長さ: {len(resp.text)}")
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
-    with open("debug_results.html", "w", encoding="utf-8") as f:
-        f.write(soup.prettify())
-    print("→ debug_results.html に保存")
+    for idx in [0, 1, 2]:
+        print(f"\n{'='*60}")
+        print(f"win5.html?idx={idx}")
+        resp = client.get(f"{BASE}/win5.html?idx={idx}")
+        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
-    # テーブル構造
-    for i, table in enumerate(soup.find_all("table")):
-        rows = table.find_all("tr")
-        print(f"  table[{i}] class={table.get('class',[])} rows={len(rows)}")
-        for row in rows[:5]:
-            cells = row.find_all(["td","th"])
-            texts = [c.get_text(strip=True)[:20] for c in cells[:6]]
-            links = [a["href"] for c in cells for a in c.find_all("a",href=True)][:3]
-            if texts:
-                print(f"    {texts}  links={links}")
+        # ページ全テキストから日付を探す
+        text = soup.get_text(separator="\n")
+        print("--- 日付っぽい行 ---")
+        for line in text.splitlines():
+            line = line.strip()
+            if line and ("年" in line or "月" in line or "週" in line or "2024" in line or "2025" in line or "2026" in line):
+                print(f"  {line[:60]}")
 
-    print()
+        # title・h1・h2・h3
+        print("--- タイトル系タグ ---")
+        for tag in soup.find_all(["title","h1","h2","h3","p"]):
+            t = tag.get_text(strip=True)
+            if t:
+                print(f"  <{tag.name}>: {t[:60]}")
 
-    # ② 直近のWIN5詳細（idx=0）
-    print("="*60)
-    print("② win5.html?idx=0（直近）")
-    resp2 = client.get(f"{BASE}/win5.html?idx=0")
-    print(f"ステータス: {resp2.status_code}  長さ: {len(resp2.text)}")
-    soup2 = BeautifulSoup(resp2.content, "lxml", from_encoding="euc-jp")
-    with open("debug_detail.html", "w", encoding="utf-8") as f:
-        f.write(soup2.prettify())
-    print("→ debug_detail.html に保存")
+        # win5raceresult2テーブルの全行
+        print("--- win5raceresult2 テーブル ---")
+        table = soup.find("table", class_="win5raceresult2")
+        if table:
+            for i, row in enumerate(table.find_all("tr")):
+                cells = row.find_all(["td","th"])
+                texts = [c.get_text(strip=True)[:30] for c in cells]
+                links = [a["href"] for c in cells for a in c.find_all("a", href=True)]
+                print(f"  row[{i}]: {texts}")
+                if links:
+                    print(f"         links: {links}")
 
-    for i, table in enumerate(soup2.find_all("table")):
-        rows = table.find_all("tr")
-        print(f"  table[{i}] class={table.get('class',[])} rows={len(rows)}")
-        for row in rows[:8]:
-            cells = row.find_all(["td","th"])
-            texts = [c.get_text(strip=True)[:25] for c in cells[:6]]
-            links = [a["href"] for c in cells for a in c.find_all("a",href=True)][:3]
-            if texts:
-                print(f"    {texts}  links={links}")
+        # 払戻テーブル
+        print("--- 払戻テーブル ---")
+        for table in soup.find_all("table", class_="Win5_Table"):
+            for row in table.find_all("tr"):
+                cells = row.find_all(["td","th"])
+                print(f"  {[c.get_text(strip=True)[:30] for c in cells]}")
