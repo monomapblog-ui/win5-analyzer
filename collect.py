@@ -315,16 +315,37 @@ def _venue_from_race_id(race_id: str) -> str | None:
 # ─────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="WIN5データ収集パイプライン")
+    parser = argparse.ArgumentParser(
+        description="WIN5データ収集パイプライン",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+例:
+  python collect.py --last 6              # 過去6年分を一括収集
+  python collect.py --year 2024           # 2024年のみ
+  python collect.py --year 2023 --year 2024
+  python collect.py --last 6 --list-only  # 開催一覧のみ（高速）
+  python collect.py --last 6 --force      # 全データを再取得
+        """,
+    )
     parser.add_argument("--year",      type=int, action="append", dest="years",
                         metavar="YYYY", help="収集対象年（複数指定可）")
+    parser.add_argument("--last",      type=int, metavar="N",
+                        help="現在年から遡ってN年分を収集（例: --last 6）")
     parser.add_argument("--list-only", action="store_true",
                         help="WIN5開催一覧のみ収集（各レース結果は取得しない）")
     parser.add_argument("--force",     action="store_true",
                         help="既存データを上書き再取得")
     args = parser.parse_args()
 
-    years = args.years or [date.today().year]
+    current_year = date.today().year
+    if args.last:
+        years = list(range(current_year - args.last + 1, current_year + 1))
+    elif args.years:
+        years = sorted(set(args.years))
+    else:
+        years = [current_year]
+
+    log.info(f"収集対象年: {years}")
     for year in years:
         asyncio.run(collect_year(year, list_only=args.list_only, force=args.force))
 

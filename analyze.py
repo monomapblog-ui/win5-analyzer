@@ -85,9 +85,18 @@ async def analyze(years: list[int] | None = None):
 def main():
     parser = argparse.ArgumentParser(description="WIN5人気の和 分布分析")
     parser.add_argument("--year", type=int, action="append", dest="years", metavar="YYYY")
+    parser.add_argument("--last", type=int, metavar="N", help="現在年から遡ってN年分（例: --last 6）")
     parser.add_argument("--all",  action="store_true", help="全年対象")
     args = parser.parse_args()
-    years = None if args.all else (args.years or [date.today().year])
+
+    current_year = date.today().year
+    if args.all:
+        years = None
+    elif args.last:
+        years = list(range(current_year - args.last + 1, current_year + 1))
+    else:
+        years = args.years or [current_year]
+
     asyncio.run(analyze(years))
 
 
