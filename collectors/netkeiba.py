@@ -60,39 +60,30 @@ def _get(url: str) -> httpx.Response:
 
 def fetch_win5_dates(target_years: list[int] | None = None) -> list[str]:
     """
-    win5_results.html から過去全WIN5の日付文字列リストを取得する。
-    返り値: ['20260607', '20260606', ...] （新しい順）
+    win5_results.html?year=YYYY から各年のWIN5日付リストを取得する。
+    返り値: ['20240101', '20240108', ...] （古い順）
     target_years 指定時はその年のみ返す。
+
+    ページ構造:
+      <select name="year"> に 2011〜現在の年が並んでいる
+      <form action="win5_results.html" method="get"> で年別切り替え
+      各リンクは win5.html?date=YYYYMMDD 形式
     """
-    url = f"{BASE}/win5_results.html"
-    resp = _get(url)
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    years_to_fetch = target_years or [date.today().year]
+    all_dates = []
 
-    dates = []
-    for a in soup.find_all("a", href=True):
-        m = re.search(r"win5\.html\?date=(\d{8})", a["href"])
-        if m:
-            dates.append(m.group(1))
+    for year in years_to_fetch:
+        url = f"{BASE}/win5_results.html?year={year}"
+        resp = _get(url)
+        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
-    # 今週分（win5.html のナビゲーションリンク）も追加
-    url2 = f"{BASE}/win5.html"
-    resp2 = _get(url2)
-    soup2 = BeautifulSoup(resp2.content, "lxml", from_encoding="euc-jp")
-    for a in soup2.find_all("a", href=True):
-        m = re.search(r"win5\.html\?(?:date=|idx=)(\d+)", a["href"])
-        if m:
-            val = m.group(1)
-            if len(val) == 8:  # date=YYYYMMDD 形式のみ
-                if val not in dates:
-                    dates.append(val)
+        for a in soup.find_all("a", href=True):
+            m = re.search(r"win5\.html\?date=(\d{8})", a["href"])
+            if m:
+                all_dates.append(m.group(1))
 
-    # 重複除去・ソート（新しい順）
-    dates = sorted(set(dates), reverse=True)
-
-    if target_years:
-        dates = [d for d in dates if int(d[:4]) in target_years]
-
-    return dates
+    # 重複除去・古い順ソート
+    return sorted(set(all_dates))
 
 
 # ─────────────────────────────────────────────
