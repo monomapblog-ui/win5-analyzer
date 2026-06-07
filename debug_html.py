@@ -1,4 +1,5 @@
-"""過去WIN5へのナビゲーション構造を確認"""
+"""win5_results.htmlの年パラメータ・ページネーション確認"""
+import re
 import httpx
 from bs4 import BeautifulSoup
 
@@ -17,45 +18,39 @@ BASE = "https://race.netkeiba.com/top"
 
 with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
 
-    # ① win5.html の全リンクを確認
-    print("="*60)
-    print("① win5.html の全リンク")
-    resp = client.get(f"{BASE}/win5.html")
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        text = a.get_text(strip=True)[:30]
-        if text or "win5" in href.lower() or "kaisai" in href.lower():
-            print(f"  '{text}' -> {href}")
+    # 年パラメータのバリエーションを試す
+    test_urls = [
+        f"{BASE}/win5_results.html",
+        f"{BASE}/win5_results.html?year=2024",
+        f"{BASE}/win5_results.html?year=2021",
+    ]
 
-    # ② win5_results.html の全リンクを確認
-    print("\n" + "="*60)
-    print("② win5_results.html の全リンク（上位50件）")
-    resp2 = client.get(f"{BASE}/win5_results.html")
-    soup2 = BeautifulSoup(resp2.content, "lxml", from_encoding="euc-jp")
-    links = soup2.find_all("a", href=True)
-    print(f"総リンク数: {len(links)}")
-    for a in links[:50]:
-        href = a["href"]
-        text = a.get_text(strip=True)[:30]
-        print(f"  '{text}' -> {href}")
+    for url in test_urls:
+        print(f"\n{'='*60}")
+        print(f"URL: {url}")
+        resp = client.get(url)
+        print(f"ステータス: {resp.status_code}  長さ: {len(resp.text)}")
+        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
-    # ③ kaisai_date パラメータで直接アクセス（例: 2024年1月6日）
-    print("\n" + "="*60)
-    print("③ kaisai_date=20240106 で直接アクセス")
-    resp3 = client.get(f"{BASE}/win5.html?kaisai_date=20240106")
-    soup3 = BeautifulSoup(resp3.content, "lxml", from_encoding="euc-jp")
-    title = soup3.find("title")
-    print(f"title: {title.get_text() if title else 'なし'}")
-    table = soup3.find("table", class_="win5raceresult2")
-    if table:
-        for row in table.find_all("tr"):
-            cells = row.find_all(["td","th"])
-            texts = [c.get_text(strip=True)[:25] for c in cells]
-            links_in_row = [a["href"] for c in cells for a in c.find_all("a", href=True)]
-            print(f"  {texts}")
-            if links_in_row:
-                print(f"    links: {links_in_row}")
-    else:
-        p = soup3.find("p")
-        print(f"テーブルなし。p: {p.get_text() if p else 'なし'}")
+        # WIN5日付リンクを全抽出
+        date_links = []
+        for a in soup.find_all("a", href=True):
+            m = re.search(r"win5\.html\?date=(\d{8})", a["href"])
+            if m:
+                date_links.append(m.group(1))
+
+        print(f"WIN5日付リンク数: {len(date_links)}")
+        if date_links:
+            print(f"  最古: {date_links[-1]}  最新: {date_links[0]}")
+
+        # ページネーション・年セレクタを探す
+        print("ページネーション・年選択っぽい要素:")
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            text = a.get_text(strip=True)
+            if any(k in href for k in ["page=", "year=", "p=", "next", "prev"]):
+                print(f"  '{text}' -> {href}")
+        for sel in soup.find_all("select"):
+            print(f"  <select name={sel.get('name','')}>: {[o.get('value') for o in sel.find_all('option')]}")
+        for form in soup.find_all("form"):
+            print(f"  <form action={form.get('action','')} method={form.get('method','')}>")
