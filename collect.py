@@ -231,7 +231,7 @@ def _save_race_and_update_popularity(race_id: str, entries: list[dict]):
         session.commit()
         log.info(f"    {race_id} 保存完了（{len(entries)}頭 勝ち馬人気={winner_popularity}）")
 
-    # 人気の和を再計算
+    # 人気の和を再計算（全スロットを直接クエリして確実に集計）
     with SessionLocal() as session:
         slot = session.scalar(
             select(Win5Slot).where(Win5Slot.race_id_str == race_id)
@@ -239,8 +239,11 @@ def _save_race_and_update_popularity(race_id: str, entries: list[dict]):
         if slot:
             event = session.get(Win5Event, slot.event_id)
             if event:
-                session.refresh(event)
-                event.calc_popularity_sum()
+                all_slots = session.execute(
+                    select(Win5Slot).where(Win5Slot.event_id == event.id)
+                ).scalars().all()
+                pops = [s.winner_popularity for s in all_slots if s.winner_popularity is not None]
+                event.popularity_sum = sum(pops) if len(pops) == 5 else None
                 session.commit()
                 log.info(
                     f"    人気の和更新: {event.held_date}  "
