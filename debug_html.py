@@ -1,4 +1,4 @@
-"""WIN5詳細ページの日付・構造確認"""
+"""過去WIN5へのナビゲーション構造を確認"""
 import httpx
 from bs4 import BeautifulSoup
 
@@ -17,42 +17,45 @@ BASE = "https://race.netkeiba.com/top"
 
 with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
 
-    for idx in [0, 1, 2]:
-        print(f"\n{'='*60}")
-        print(f"win5.html?idx={idx}")
-        resp = client.get(f"{BASE}/win5.html?idx={idx}")
-        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    # ① win5.html の全リンクを確認
+    print("="*60)
+    print("① win5.html の全リンク")
+    resp = client.get(f"{BASE}/win5.html")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        text = a.get_text(strip=True)[:30]
+        if text or "win5" in href.lower() or "kaisai" in href.lower():
+            print(f"  '{text}' -> {href}")
 
-        # ページ全テキストから日付を探す
-        text = soup.get_text(separator="\n")
-        print("--- 日付っぽい行 ---")
-        for line in text.splitlines():
-            line = line.strip()
-            if line and ("年" in line or "月" in line or "週" in line or "2024" in line or "2025" in line or "2026" in line):
-                print(f"  {line[:60]}")
+    # ② win5_results.html の全リンクを確認
+    print("\n" + "="*60)
+    print("② win5_results.html の全リンク（上位50件）")
+    resp2 = client.get(f"{BASE}/win5_results.html")
+    soup2 = BeautifulSoup(resp2.content, "lxml", from_encoding="euc-jp")
+    links = soup2.find_all("a", href=True)
+    print(f"総リンク数: {len(links)}")
+    for a in links[:50]:
+        href = a["href"]
+        text = a.get_text(strip=True)[:30]
+        print(f"  '{text}' -> {href}")
 
-        # title・h1・h2・h3
-        print("--- タイトル系タグ ---")
-        for tag in soup.find_all(["title","h1","h2","h3","p"]):
-            t = tag.get_text(strip=True)
-            if t:
-                print(f"  <{tag.name}>: {t[:60]}")
-
-        # win5raceresult2テーブルの全行
-        print("--- win5raceresult2 テーブル ---")
-        table = soup.find("table", class_="win5raceresult2")
-        if table:
-            for i, row in enumerate(table.find_all("tr")):
-                cells = row.find_all(["td","th"])
-                texts = [c.get_text(strip=True)[:30] for c in cells]
-                links = [a["href"] for c in cells for a in c.find_all("a", href=True)]
-                print(f"  row[{i}]: {texts}")
-                if links:
-                    print(f"         links: {links}")
-
-        # 払戻テーブル
-        print("--- 払戻テーブル ---")
-        for table in soup.find_all("table", class_="Win5_Table"):
-            for row in table.find_all("tr"):
-                cells = row.find_all(["td","th"])
-                print(f"  {[c.get_text(strip=True)[:30] for c in cells]}")
+    # ③ kaisai_date パラメータで直接アクセス（例: 2024年1月6日）
+    print("\n" + "="*60)
+    print("③ kaisai_date=20240106 で直接アクセス")
+    resp3 = client.get(f"{BASE}/win5.html?kaisai_date=20240106")
+    soup3 = BeautifulSoup(resp3.content, "lxml", from_encoding="euc-jp")
+    title = soup3.find("title")
+    print(f"title: {title.get_text() if title else 'なし'}")
+    table = soup3.find("table", class_="win5raceresult2")
+    if table:
+        for row in table.find_all("tr"):
+            cells = row.find_all(["td","th"])
+            texts = [c.get_text(strip=True)[:25] for c in cells]
+            links_in_row = [a["href"] for c in cells for a in c.find_all("a", href=True)]
+            print(f"  {texts}")
+            if links_in_row:
+                print(f"    links: {links_in_row}")
+    else:
+        p = soup3.find("p")
+        print(f"テーブルなし。p: {p.get_text() if p else 'なし'}")
