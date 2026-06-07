@@ -1,8 +1,4 @@
-"""HTMLの実際の構造を確認するデバッグスクリプト
-
-使い方:
-  python debug_html.py
-"""
+"""HTMLの実際の構造を確認するデバッグスクリプト"""
 import httpx
 from bs4 import BeautifulSoup
 
@@ -12,39 +8,40 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
 
-url = "https://db.netkeiba.com/?pid=win5_list&year=2024"
-print(f"取得中: {url}")
-resp = httpx.get(url, headers=HEADERS, timeout=30, follow_redirects=True)
-print(f"ステータス: {resp.status_code}")
-print(f"Content-Type: {resp.headers.get('content-type')}")
+urls = [
+    "https://www.jra.go.jp/keiba/overseas/win5/",
+    "https://race.netkeiba.com/top/win5.html",
+    "https://db.netkeiba.com/?pid=win5_list&year=2024",
+]
 
-# HTMLをファイルに保存
-with open("debug_win5_list.html", "w", encoding=resp.encoding or "utf-8", errors="replace") as f:
-    f.write(resp.text)
-print("debug_win5_list.html に保存しました")
+for url in urls:
+    print(f"\n{'='*60}")
+    print(f"URL: {url}")
+    try:
+        with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
+            # まずトップページを取得してcookieを得る
+            client.get("https://db.netkeiba.com/")
+            resp = client.get(url)
+        print(f"ステータス: {resp.status_code}")
+        print(f"Content-Length: {len(resp.text)}")
+        print(f"最初の200文字:\n{resp.text[:200]}")
 
-# テーブルを全部列挙
-soup = BeautifulSoup(resp.text, "lxml")
-tables = soup.find_all("table")
-print(f"\nテーブル数: {len(tables)}")
-for i, t in enumerate(tables):
-    cls = t.get("class", [])
-    rows = t.find_all("tr")
-    print(f"\n  table[{i}] class={cls} rows={len(rows)}")
-    for j, row in enumerate(rows[:3]):  # 最初の3行だけ表示
-        cells = row.find_all(["td", "th"])
-        print(f"    row[{j}]: {len(cells)}セル")
-        for k, cell in enumerate(cells[:5]):
-            text = cell.get_text(strip=True)[:40]
-            links = [a.get("href","") for a in cell.find_all("a")]
-            print(f"      cell[{k}]: '{text}' links={links}")
+        soup = BeautifulSoup(resp.text, "lxml")
+        tables = soup.find_all("table")
+        print(f"テーブル数: {len(tables)}")
 
-# divも確認
-print("\n--- 主要div ---")
-for div in soup.find_all("div", class_=True)[:20]:
-    cls = div.get("class", [])
-    text = div.get_text(strip=True)[:50]
-    print(f"  div class={cls}: '{text}'")
+        # WIN5っぽいリンクを探す
+        for a in soup.find_all("a", href=True)[:30]:
+            href = a["href"]
+            if "win5" in href.lower() or "race_id" in href.lower():
+                print(f"  リンク: {a.get_text(strip=True)[:30]} -> {href}")
+
+    except Exception as e:
+        print(f"エラー: {e}")
