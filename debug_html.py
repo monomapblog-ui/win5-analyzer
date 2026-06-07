@@ -1,4 +1,4 @@
-"""win5_results.htmlの年パラメータ・ページネーション確認"""
+"""レース結果ページのHTML構造確認"""
 import re
 import httpx
 from bs4 import BeautifulSoup
@@ -14,43 +14,32 @@ HEADERS = {
     "Referer": "https://race.netkeiba.com/top/win5.html",
 }
 
-BASE = "https://race.netkeiba.com/top"
+# 直近のWIN5レース（idx=1のデータから取得済み）
+race_id = "202605030211"  # 東京11R 安田記念
+url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
 
+print(f"URL: {url}")
 with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
+    resp = client.get(url)
+print(f"ステータス: {resp.status_code}  長さ: {len(resp.text)}")
 
-    # 年パラメータのバリエーションを試す
-    test_urls = [
-        f"{BASE}/win5_results.html",
-        f"{BASE}/win5_results.html?year=2024",
-        f"{BASE}/win5_results.html?year=2021",
-    ]
+soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
-    for url in test_urls:
-        print(f"\n{'='*60}")
-        print(f"URL: {url}")
-        resp = client.get(url)
-        print(f"ステータス: {resp.status_code}  長さ: {len(resp.text)}")
-        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+# 全テーブルのclass・id・行数を確認
+print(f"\n全テーブル:")
+for i, t in enumerate(soup.find_all("table")):
+    rows = t.find_all("tr")
+    print(f"  [{i}] id={t.get('id','')} class={t.get('class',[])} rows={len(rows)}")
 
-        # WIN5日付リンクを全抽出
-        date_links = []
-        for a in soup.find_all("a", href=True):
-            m = re.search(r"win5\.html\?date=(\d{8})", a["href"])
-            if m:
-                date_links.append(m.group(1))
-
-        print(f"WIN5日付リンク数: {len(date_links)}")
-        if date_links:
-            print(f"  最古: {date_links[-1]}  最新: {date_links[0]}")
-
-        # ページネーション・年セレクタを探す
-        print("ページネーション・年選択っぽい要素:")
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            text = a.get_text(strip=True)
-            if any(k in href for k in ["page=", "year=", "p=", "next", "prev"]):
-                print(f"  '{text}' -> {href}")
-        for sel in soup.find_all("select"):
-            print(f"  <select name={sel.get('name','')}>: {[o.get('value') for o in sel.find_all('option')]}")
-        for form in soup.find_all("form"):
-            print(f"  <form action={form.get('action','')} method={form.get('method','')}>")
+# 最も行数が多いテーブル（レース結果テーブルのはず）の全行を表示
+tables = soup.find_all("table")
+if tables:
+    main_table = max(tables, key=lambda t: len(t.find_all("tr")))
+    print(f"\n最大テーブル (rows={len(main_table.find_all('tr'))}) の内容:")
+    for i, row in enumerate(main_table.find_all("tr")):
+        cells = row.find_all(["td", "th"])
+        texts = [c.get_text(strip=True)[:15] for c in cells]
+        links = [a["href"][:50] for c in cells for a in c.find_all("a", href=True)][:2]
+        print(f"  row[{i:2d}] ({len(cells)}セル): {texts}")
+        if links:
+            print(f"          links: {links}")
