@@ -1,4 +1,4 @@
-"""HTMLの実際の構造を確認するデバッグスクリプト"""
+"""WIN5結果ページの構造確認"""
 import httpx
 from bs4 import BeautifulSoup
 
@@ -10,38 +10,52 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
+    "Referer": "https://race.netkeiba.com/top/win5.html",
 }
 
-urls = [
-    "https://www.jra.go.jp/keiba/overseas/win5/",
-    "https://race.netkeiba.com/top/win5.html",
-    "https://db.netkeiba.com/?pid=win5_list&year=2024",
-]
+BASE = "https://race.netkeiba.com/top"
 
-for url in urls:
-    print(f"\n{'='*60}")
-    print(f"URL: {url}")
-    try:
-        with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-            # まずトップページを取得してcookieを得る
-            client.get("https://db.netkeiba.com/")
-            resp = client.get(url)
-        print(f"ステータス: {resp.status_code}")
-        print(f"Content-Length: {len(resp.text)}")
-        print(f"最初の200文字:\n{resp.text[:200]}")
+with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
 
-        soup = BeautifulSoup(resp.text, "lxml")
-        tables = soup.find_all("table")
-        print(f"テーブル数: {len(tables)}")
+    # ① 過去結果一覧ページ
+    print("="*60)
+    print("① win5_results.html")
+    resp = client.get(f"{BASE}/win5_results.html")
+    print(f"ステータス: {resp.status_code}  長さ: {len(resp.text)}")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    with open("debug_results.html", "w", encoding="utf-8") as f:
+        f.write(soup.prettify())
+    print("→ debug_results.html に保存")
 
-        # WIN5っぽいリンクを探す
-        for a in soup.find_all("a", href=True)[:30]:
-            href = a["href"]
-            if "win5" in href.lower() or "race_id" in href.lower():
-                print(f"  リンク: {a.get_text(strip=True)[:30]} -> {href}")
+    # テーブル構造
+    for i, table in enumerate(soup.find_all("table")):
+        rows = table.find_all("tr")
+        print(f"  table[{i}] class={table.get('class',[])} rows={len(rows)}")
+        for row in rows[:5]:
+            cells = row.find_all(["td","th"])
+            texts = [c.get_text(strip=True)[:20] for c in cells[:6]]
+            links = [a["href"] for c in cells for a in c.find_all("a",href=True)][:3]
+            if texts:
+                print(f"    {texts}  links={links}")
 
-    except Exception as e:
-        print(f"エラー: {e}")
+    print()
+
+    # ② 直近のWIN5詳細（idx=0）
+    print("="*60)
+    print("② win5.html?idx=0（直近）")
+    resp2 = client.get(f"{BASE}/win5.html?idx=0")
+    print(f"ステータス: {resp2.status_code}  長さ: {len(resp2.text)}")
+    soup2 = BeautifulSoup(resp2.content, "lxml", from_encoding="euc-jp")
+    with open("debug_detail.html", "w", encoding="utf-8") as f:
+        f.write(soup2.prettify())
+    print("→ debug_detail.html に保存")
+
+    for i, table in enumerate(soup2.find_all("table")):
+        rows = table.find_all("tr")
+        print(f"  table[{i}] class={table.get('class',[])} rows={len(rows)}")
+        for row in rows[:8]:
+            cells = row.find_all(["td","th"])
+            texts = [c.get_text(strip=True)[:25] for c in cells[:6]]
+            links = [a["href"] for c in cells for a in c.find_all("a",href=True)][:3]
+            if texts:
+                print(f"    {texts}  links={links}")
