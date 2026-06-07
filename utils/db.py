@@ -34,8 +34,6 @@ class Race(Base):
     entries   = relationship("Entry",    back_populates="race", cascade="all, delete-orphan")
     win5_slot = relationship("Win5Slot", back_populates="race", uselist=False)
 
-    __table_args__ = (UniqueConstraint("held_date", "venue", "race_number"),)
-
 
 class Horse(Base):
     __tablename__ = "horses"

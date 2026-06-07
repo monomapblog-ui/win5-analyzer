@@ -167,9 +167,12 @@ def _save_race_and_update_popularity(race_id: str, entries: list[dict]):
     with SessionLocal() as session:
         race = session.scalar(select(Race).where(Race.race_id == race_id))
         if race is None:
+            # held_dateはWin5Slotから取得（race_idは開催コードを含み日付ではない）
+            slot = session.scalar(select(Win5Slot).where(Win5Slot.race_id_str == race_id))
+            event_date = slot.event.held_date if slot and slot.event else None
             race = Race(
                 race_id=race_id,
-                held_date=date(int(race_id[:4]), int(race_id[4:6]), int(race_id[6:8])),
+                held_date=event_date,
                 venue=_venue_from_race_id(race_id),
                 race_number=int(race_id[10:12]),
             )
