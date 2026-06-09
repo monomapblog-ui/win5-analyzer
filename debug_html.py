@@ -1,4 +1,4 @@
-"""レース結果テーブル All_Result_Table の列構造を確認"""
+"""オッズページのHTML構造確認"""
 import httpx
 from bs4 import BeautifulSoup
 
@@ -12,23 +12,29 @@ HEADERS = {
     "Referer": "https://race.netkeiba.com/top/win5.html",
 }
 
-race_id = "202605030211"
-url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
+race_id = "202605030211"  # 安田記念
 
 with httpx.Client(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-    resp = client.get(url)
+    for url in [
+        f"https://race.netkeiba.com/odds/index.html?race_id={race_id}&type=b1",
+        f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}",
+    ]:
+        print(f"\n{'='*60}")
+        print(f"URL: {url}")
+        resp = client.get(url)
+        print(f"ステータス: {resp.status_code}  長さ: {len(resp.text)}")
+        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
-soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
-table = soup.find("table", id="All_Result_Table")
+        print("全テーブル:")
+        for i, t in enumerate(soup.find_all("table")):
+            rows = t.find_all("tr")
+            print(f"  [{i}] id={t.get('id','')} class={t.get('class',[])} rows={len(rows)}")
 
-if table is None:
-    print("All_Result_Table が見つかりません")
-else:
-    print(f"All_Result_Table: {len(table.find_all('tr'))} 行\n")
-    for i, row in enumerate(table.find_all("tr")):
-        cells = row.find_all(["td", "th"])
-        texts = [c.get_text(strip=True)[:20] for c in cells]
-        links = [a["href"][:60] for c in cells for a in c.find_all("a", href=True)][:2]
-        print(f"row[{i:2d}] ({len(cells)}セル): {texts}")
-        if links:
-            print(f"        links: {links}")
+        # 最大テーブルの最初の5行
+        tables = soup.find_all("table")
+        if tables:
+            best = max(tables, key=lambda t: len(t.find_all("tr")))
+            print(f"\n最大テーブルの内容 (id={best.get('id','')}):")
+            for i, row in enumerate(best.find_all("tr")[:6]):
+                cells = row.find_all(["td","th"])
+                print(f"  row[{i}]: {[c.get_text(strip=True)[:15] for c in cells[:8]]}")
