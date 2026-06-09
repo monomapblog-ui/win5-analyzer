@@ -62,90 +62,95 @@ def get_win5_race_ids(date_str: str) -> list[dict]:
 
 
 # ─────────────────────────────────────────────
-# ターゲットゾーン戦略（予算指定時）
-# 人気の和15〜22の組み合わせが budget_yen円分になる選択を探す
+# 純粋ターゲットゾーン戦略（低ゾーン0通り保証）
+#
+# 原理: 各スロットで [lo, hi] の連続人気帯を選ぶとき
+#   sum(lo) >= 15 かつ sum(hi) <= 22 なら
+#   全ての組み合わせが必ず和 15〜22 に収まる
 # ─────────────────────────────────────────────
 
-def _count_target_combos(slot_horses: list[list[dict]]) -> list[tuple]:
-    """人気の和が15〜22に入る組み合わせを返す"""
-    target = []
-    for combo in iterproduct(*slot_horses):
-        s = sum(h.get("popularity", 0) for h in combo)
-        if 15 <= s <= 22:
-            target.append(combo)
-    return target
-
-
-def generate_target_zone_coverage(slots_odds: list[list[dict]], budget_yen: int) -> dict:
+def _build_pure_set(lo: tuple, ranked: list, max_avail: list) -> dict | None:
     """
-    人気の和15〜22の組み合わせがbudget_yen円（±20%）になるよう
-    各スロットの選択頭数・人気範囲を調整する。
-
-    戦略:
-      - 各スロットで「中間人気帯（2〜6番人気）」を中心に選ぶ
-      - ターゲットゾーン組み合わせ数が予算÷100に近くなるよう幅を調整
+    lo: 各スロットの開始人気（1-indexed）
+    sum(lo) >= 15 を前提に hi を最大化して1セットを作る。
+    sum(hi) <= 22 制約のもとで最大コンボ数を目指す。
     """
-    target_count = budget_yen // 100
-    ranked_all = [
-        sorted([h for h in odds if h.get("popularity")], key=lambda h: h["popularity"])
-        for odds in slots_odds
-    ]
+    hi = list(lo)
+    budget_rem = 22 - sum(hi)
 
-    best = None
-    best_diff = float("inf")
-
-    # 各スロットで選ぶ人気の「開始位置」と「幅」を探索
-    # start: 何番人気から選び始めるか（1〜4）
-    # width: 何頭選ぶか（2〜8）
-    from itertools import product as iprod
-    starts = [1, 2, 3]
-    widths = [2, 3, 4, 5, 6, 7, 8]
-
-    for config in iprod(starts, widths, starts, widths, starts, widths, starts, widths, starts, widths):
-        # config = (start0, width0, start1, width1, ..., start4, width4)
-        slot_horses = []
-        valid = True
-        for i in range(5):
-            start = config[i * 2]
-            width = config[i * 2 + 1]
-            horses = ranked_all[i][start - 1: start - 1 + width]
-            if len(horses) < 1:
-                valid = False
-                break
-            slot_horses.append(horses)
-        if not valid:
-            continue
-
-        target_combos = _count_target_combos(slot_horses)
-        diff = abs(len(target_combos) - target_count)
-
-        if diff < best_diff:
-            best_diff = diff
-            best = (slot_horses, target_combos)
-
-        # 十分近ければ早期終了（±5%以内）
-        if diff <= target_count * 0.05:
+    # sum(hi) <= 22 の範囲で各スロットに1ずつ追加（幅の小さいスロット優先）
+    for _ in range(budget_rem):
+        best_s = None
+        best_width = 9999
+        for s in range(5):
+            if hi[s] < max_avail[s]:
+                w = hi[s] - lo[s]
+                if w < best_width:
+                    best_width = w
+                    best_s = s
+        if best_s is None:
             break
+        hi[best_s] += 1
 
-    if best is None:
-        # フォールバック：上位3〜4頭
-        slot_horses = [ranked_all[i][:3] for i in range(5)]
-        target_combos = _count_target_combos(slot_horses)
-        best = (slot_horses, target_combos)
+    combos = 1
+    for s in range(5):
+        combos *= hi[s] - lo[s] + 1
 
-    slot_horses, target_combos = best
-    all_combos = list(iterproduct(*slot_horses))
+    slot_horses = [ranked[s][lo[s] - 1: hi[s]] for s in range(5)]
+    if any(len(h) == 0 for h in slot_horses):
+        return None
 
     return {
-        "label":          f"ターゲットゾーン戦略（予算{budget_yen:,}円）",
-        "slot_horses":    slot_horses,
-        "all_combos":     all_combos,
-        "target_combos":  target_combos,
-        "target_cost":    len(target_combos) * 100,
-        "total_cost":     len(all_combos) * 100,
-        "target_count":   len(target_combos),
-        "total_count":    len(all_combos),
+        "lo":          tuple(lo),
+        "hi":          tuple(hi),
+        "combos":      combos,
+        "slot_horses": slot_horses,
     }
+
+
+def generate_pure_zone_sets(slots_odds: list[list[dict]], budget_yen: int) -> list[dict]:
+    """
+    低ゾーン0通り保証の純粋ターゲットゾーンセットを複数生成する。
+    各セットは独立したIPATチケットとして入力する。
+    """
+    target = budget_yen // 100
+    ranked = [
+        sorted([h for h in o if h.get("popularity")], key=lambda h: h["popularity"])
+        for o in slots_odds
+    ]
+    max_avail = [len(r) for r in ranked]
+
+    # lo の全候補を列挙（sum(lo) ∈ [15,18], lo_i ∈ [1..6]）
+    from itertools import product as iprod
+    candidates = []
+    for lo in iprod(*[range(1, 7) for _ in range(5)]):
+        s = sum(lo)
+        if s < 15 or s > 18:
+            continue
+        if any(lo[i] > max_avail[i] for i in range(5)):
+            continue
+        ps = _build_pure_set(lo, ranked, max_avail)
+        if ps:
+            candidates.append(ps)
+
+    # コンボ数が多い順にソートし、重複(同一hi)を除外
+    seen_hi = set()
+    unique = []
+    for c in sorted(candidates, key=lambda x: -x["combos"]):
+        if c["hi"] not in seen_hi:
+            seen_hi.add(c["hi"])
+            unique.append(c)
+
+    # 予算に達するまで貪欲に追加
+    selected = []
+    total = 0
+    for c in unique:
+        if total >= target:
+            break
+        selected.append(c)
+        total += c["combos"]
+
+    return selected
 
 
 # ─────────────────────────────────────────────
@@ -206,48 +211,43 @@ def generate_sets(slots_odds: list[list[dict]]) -> list[dict]:
 # 出力
 # ─────────────────────────────────────────────
 
-def print_target_zone(date_str: str, slots_info: list[dict], coverage: dict):
-    """予算指定時のターゲットゾーン出力（IPAT入力しやすい形式）"""
+def print_pure_sets(date_str: str, slots_info: list[dict], sets: list[dict], budget_yen: int):
+    """純粋ターゲットゾーンセットの出力（全組み合わせが和15〜22）"""
+    total_combos = sum(s["combos"] for s in sets)
+    total_cost   = total_combos * 100
+
     print(f"\n{'='*65}")
     print(f"  WIN5 買い目  {date_str[:4]}年{date_str[4:6]}月{date_str[6:]}日")
-    print(f"  【ターゲットゾーン戦略】人気の和15〜22")
-    print(f"  ターゲット: {coverage['target_count']:,}通り × 100円 = {coverage['target_cost']:,}円")
+    print(f"  【純粋ターゲットゾーン】全組み合わせが和15〜22（低ゾーン0通り）")
+    print(f"  {len(sets)}チケット × 合計 {total_combos}通り = {total_cost:,}円")
     print(f"{'='*65}")
 
-    print(f"\n■ 対象レースと選択馬（IPAT入力用）")
-    print(f"  {'スロット':>6}  {'レース名':>14}  {'選択頭数':>6}  馬番一覧")
-    print(f"  {'-'*60}")
+    for ti, s in enumerate(sets):
+        print(f"\n  ── チケット{ti+1} （{s['combos']}通り / {s['combos']*100:,}円）──")
+        print(f"  人気帯: " + "  ".join(
+            f"slot{i+1}=[{s['lo'][i]}〜{s['hi'][i]}番人気]" for i in range(5)
+        ))
+        print(f"  最小和={sum(s['lo'])}  最大和={sum(s['hi'])}")
+        print()
+        print(f"  {'スロット':>6}  {'レース名':>14}  馬番（人気順）")
+        print(f"  {'-'*55}")
+        horse_nums_per_slot = []
+        for i, (info, horses) in enumerate(zip(slots_info, s["slot_horses"])):
+            nums = sorted([h["horse_number"] for h in horses])
+            horse_nums_per_slot.append(nums)
+            nums_str = " ".join(f"{n:>2}番" for n in nums)
+            pop_str  = " ".join(f"{h['popularity']}人気:{h['horse_name'][:5]}" for h in horses)
+            print(f"  slot{i+1}  {info['name']:>14}  {nums_str}")
+            print(f"  {'':>6}  {'':>14}  {pop_str}")
 
-    all_horse_numbers = []
-    for i, (info, horses) in enumerate(zip(slots_info, coverage["slot_horses"])):
-        nums = [h["horse_number"] for h in horses]
-        all_horse_numbers.append(nums)
-        nums_str = " ".join(f"{n:>2}番" for n in sorted(nums))
-        pop_str  = " ".join(f"({h['popularity']}人気:{h['horse_name'][:4]})" for h in horses)
-        print(f"  slot{i+1}  {info['name']:>14}  {len(horses):>4}頭  {nums_str}")
-        print(f"  {'':>6}  {'':>14}  {'':>6}  {pop_str}")
+        print(f"\n  IPAT入力:")
+        for i, nums in enumerate(horse_nums_per_slot):
+            print(f"    レース{i+1}: " + "・".join(str(n) for n in nums) + "番")
 
-    print(f"\n■ IPATでの入力手順")
-    print(f"  1. IPAT → WIN5 を選択")
-    print(f"  2. 各レースで以下の馬番にチェック")
-    for i, nums in enumerate(all_horse_numbers):
-        nums_str = "・".join(str(n) for n in sorted(nums))
-        print(f"     レース{i+1}（slot{i+1}）: {nums_str}番")
-    print(f"  3. 金額: 100円 × {coverage['total_count']}通り = {coverage['total_cost']:,}円")
-    print(f"     ※ 内ターゲットゾーン(15〜22): {coverage['target_count']}通り = {coverage['target_cost']:,}円")
-    print(f"  4. 確認して購入")
-
-    print(f"\n■ 人気の和の分布")
-    pop_sums = [sum(h.get("popularity", 0) for h in c) for c in coverage["all_combos"]]
-    low = sum(1 for s in pop_sums if s <= 14)
-    tgt = sum(1 for s in pop_sums if 15 <= s <= 22)
-    high = sum(1 for s in pop_sums if s >= 23)
-    total = len(pop_sums)
-    print(f"  {'低(≤14)':>18}: {low:>4}通り ({low/total*100:.1f}%)  ← 今回は捨て")
-    print(f"  {'ターゲット(15-22)':>18}: {tgt:>4}通り ({tgt/total*100:.1f}%)  ← 狙い")
-    print(f"  {'高(≥23)':>18}: {high:>4}通り ({high/total*100:.1f}%)")
-    print(f"\n  ターゲット費用: {coverage['target_cost']:,}円")
-    print(f"  全体費用:       {coverage['total_cost']:,}円\n")
+    print(f"\n{'='*65}")
+    print(f"  合計: {len(sets)}チケット  {total_combos}通り  {total_cost:,}円")
+    print(f"  全組み合わせが人気の和15〜22（低ゾーン0通り）")
+    print(f"{'='*65}\n")
 
 
 def print_buys(date_str: str, slots_info: list[dict], slots_odds: list[list[dict]], sets: list[dict]):
@@ -347,14 +347,15 @@ def main():
             print(f"  ⚠ slot{i+1} のオッズが取得できませんでした")
 
     if args.budget:
-        # ── ターゲットゾーン戦略 ──
+        # ── 純粋ターゲットゾーン戦略（低ゾーン0通り）──
         if args.budget < 1000:
             print(f"⚠ 予算が少なすぎます（最低1,000円以上推奨）")
             return
-        print(f"\n予算: {args.budget:,}円  →  ターゲットゾーン(15-22)で約{args.budget//100}通りを目指して選択中...")
-        coverage = generate_target_zone_coverage(slots_odds, args.budget)
-        print(f"ターゲット組み合わせ: {coverage['target_count']}通り = {coverage['target_cost']:,}円")
-        print_target_zone(date_str, slots_info, coverage)
+        print(f"\n予算: {args.budget:,}円  →  全組み合わせが和15〜22になるセットを生成中...")
+        sets = generate_pure_zone_sets(slots_odds, args.budget)
+        total = sum(s["combos"] for s in sets)
+        print(f"生成: {len(sets)}チケット × 合計{total}通り = {total*100:,}円")
+        print_pure_sets(date_str, slots_info, sets, args.budget)
     else:
         # ── 従来4セット戦略 ──
         sets = generate_sets(slots_odds)
