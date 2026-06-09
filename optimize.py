@@ -1,18 +1,20 @@
 """WIN5 買い目最適化
 
-過去データから的中率を最大化する人気の組み合わせをグリッドサーチし、
-最適な4セット構成（予算108通り以内）を提案する。
+貪欲セットカバー法で4セットを順番に探索：
+  1. 全期間の的中数を最大化する1セット目を探す
+  2. 1セット目で取れなかったイベントに対して2セット目を探す
+  3. 以降同様に4セットまで繰り返す
 
 使い方:
   python optimize.py              # 全期間
   python optimize.py --last 6    # 直近6年
-  python optimize.py --budget 108 # 予算通り数（デフォルト108）
-  python optimize.py --top 20    # 上位20件表示
+  python optimize.py --budget 27 # 1セットあたりの予算通り数（デフォルト27）
+  python optimize.py --sets 4    # セット数（デフォルト4）
 """
 import argparse
 from collections import Counter
 from datetime import date
-from itertools import combinations
+from itertools import permutations
 
 from sqlalchemy import select, extract
 from utils.db import init_db, SessionLocal, Win5Event, Win5Slot
@@ -58,299 +60,291 @@ def load_rows(years: list[int] | None = None) -> list[dict]:
 # コアロジック
 # ─────────────────────────────────────────────
 
-def hits(pops: list[int], selection: list[list[int]]) -> bool:
-    """5スロット全てが選択範囲内なら的中"""
+def set_hits(pops: list[int], selection: list[list[int]]) -> bool:
     return all(pops[i] in selection[i] for i in range(5))
 
 
-def slot_freq(rows: list[dict], slot_idx: int, max_pop: int = 12) -> list[tuple[int, int]]:
-    """スロットの人気別出現頻度（降順）"""
-    cnt = Counter(r["pops"][slot_idx] for r in rows)
-    return sorted(
-        [(p, cnt.get(p, 0)) for p in range(1, max_pop + 1)],
-        key=lambda x: -x[1]
-    )
-
-
-def best_pops_for_slot(rows: list[dict], slot_idx: int, k: int, max_pop: int = 12) -> list[int]:
-    """スロットの上位k人気を貪欲に選択（出現頻度ベース）"""
-    freq = slot_freq(rows, slot_idx, max_pop)
-    return sorted([p for p, _ in freq[:k]])
-
-
-def calc_hit_stats(rows: list[dict], selection: list[list[int]]) -> dict:
-    """選択に対する的中統計を計算"""
-    hit_rows = [r for r in rows if hits(r["pops"], selection)]
-    n = len(rows)
-    total_invested = n * _combo_count(selection) * 100
-    total_return   = sum(r["payout"] for r in hit_rows)
-    roi = total_return / total_invested * 100 if total_invested else 0
-    return {
-        "selection":      selection,
-        "combos":         _combo_count(selection),
-        "hits":           len(hit_rows),
-        "hit_rate":       len(hit_rows) / n * 100 if n else 0,
-        "total_return":   total_return,
-        "roi":            roi,
-        "avg_payout":     int(total_return / len(hit_rows)) if hit_rows else 0,
-        "hit_rows":       hit_rows,
-    }
-
-
-def _combo_count(selection: list[list[int]]) -> int:
-    result = 1
+def combo_count(selection: list[list[int]]) -> int:
+    r = 1
     for s in selection:
-        result *= len(s)
+        r *= len(s)
+    return r
+
+
+def top_k_pops(rows: list[dict], slot_idx: int, k: int, max_pop: int = 12) -> list[int]:
+    """スロットの出現頻度上位k人気を返す"""
+    cnt = Counter(r["pops"][slot_idx] for r in rows)
+    top = sorted(cnt.items(), key=lambda x: -x[1])
+    return sorted([p for p, _ in top[:k] if p <= max_pop])
+
+
+def slot_freq_table(rows: list[dict], max_pop: int = 12) -> list[list[tuple]]:
+    """各スロットの人気別出現頻度テーブル"""
+    result = []
+    for i in range(5):
+        cnt = Counter(r["pops"][i] for r in rows)
+        freq = sorted([(p, cnt.get(p, 0)) for p in range(1, max_pop + 1)], key=lambda x: -x[1])
+        result.append(freq)
     return result
 
 
 # ─────────────────────────────────────────────
-# 予算内でのサイズ配分を列挙
+# サイズ配分の列挙（1セット分）
 # ─────────────────────────────────────────────
 
-def enum_size_configs(budget: int, n_slots: int = 5, min_size: int = 1, max_size: int = 6) -> list[tuple]:
-    """
-    n_slots個の整数 (s0..sn) で積がbudget以下になる全組み合わせを列挙。
-    s0 <= s1 <= ... でソートして重複を除去。
-    """
+def enum_size_configs(budget: int, n_slots: int = 5, max_size: int = 7) -> list[tuple]:
+    """積がbudget以下になるサイズ配分の全パターンを列挙（重複なし・ソート済み）"""
     configs = set()
 
-    def _prod(lst):
-        r = 1
-        for x in lst:
-            r *= x
-        return r
-
-    def recurse(slot: int, current: list):
+    def recurse(slot: int, current: list, prod: int):
         if slot == n_slots:
-            if _prod(current) <= budget:
-                configs.add(tuple(sorted(current)))
+            configs.add(tuple(sorted(current)))
             return
-        for size in range(min_size, max_size + 1):
-            if _prod(current + [size]) > budget:
+        for size in range(1, max_size + 1):
+            new_prod = prod * size
+            if new_prod > budget:
                 break
-            recurse(slot + 1, current + [size])
+            recurse(slot + 1, current + [size], new_prod)
 
-    recurse(0, [])
+    recurse(0, [], 1)
     return sorted(configs)
 
 
 # ─────────────────────────────────────────────
-# 最適化メイン
+# 1セット最適化
 # ─────────────────────────────────────────────
 
-def optimize(
-    rows: list[dict],
-    budget: int = 108,
-    top_n: int = 20,
-    max_pop: int = 12,
-    zone_filter: str | None = "target",
-) -> list[dict]:
+def find_best_set(rows: list[dict], budget: int, label: str = "") -> dict:
     """
-    予算budget通り以内で的中率を最大化する人気の組み合わせをグリッドサーチ。
-
-    zone_filter: "target" | "all" | None  → 対象レースをターゲットゾーンに絞るか
+    残りrowsに対して的中数を最大化する1セットを探す。
+    全サイズ配分 × 全スロット順列で探索し、各スロットは貪欲上位k選択。
     """
-    eval_rows = rows if zone_filter is None else [r for r in rows if r["zone"] == zone_filter]
-    if not eval_rows:
-        eval_rows = rows
+    if not rows:
+        return _empty_set(label)
 
-    # サイズ配分を列挙（例: 1×1×3×3×4, 1×2×2×3×3 など）
     size_configs = enum_size_configs(budget)
-    print(f"  サイズ配分候補: {len(size_configs)}種類")
-
-    results = []
-    seen = set()
+    best = None
 
     for sizes in size_configs:
-        # 各スロットで最頻出k人気を選択（貪欲）
-        selection = [best_pops_for_slot(eval_rows, i, sizes[i], max_pop) for i in range(5)]
-        key = tuple(tuple(s) for s in selection)
-        if key in seen:
-            continue
-        seen.add(key)
+        # スロットへのサイズ割り当ての全順列を試す
+        seen_perms = set()
+        for perm in permutations(sizes):
+            if perm in seen_perms:
+                continue
+            seen_perms.add(perm)
 
-        stats = calc_hit_stats(eval_rows, selection)
-        stats["sizes"] = sizes
-        results.append(stats)
+            selection = [top_k_pops(rows, i, perm[i]) for i in range(5)]
+            n_hits = sum(1 for r in rows if set_hits(r["pops"], selection))
 
-    # 的中率でソート（同率はROI優先）
-    results.sort(key=lambda x: (-x["hits"], -x["roi"]))
-    return results[:top_n * 3]  # 後でさらに絞る
+            if best is None or n_hits > best["hits"] or (
+                n_hits == best["hits"] and combo_count(selection) < best["combos"]
+            ):
+                hit_rows = [r for r in rows if set_hits(r["pops"], selection)]
+                invested  = len(rows) * combo_count(selection) * 100
+                returned  = sum(r["payout"] for r in hit_rows)
+                best = {
+                    "label":      label,
+                    "selection":  selection,
+                    "sizes":      list(perm),
+                    "combos":     combo_count(selection),
+                    "hits":       n_hits,
+                    "hit_rate":   n_hits / len(rows) * 100,
+                    "hit_rows":   hit_rows,
+                    "avg_payout": int(returned / n_hits) if n_hits else 0,
+                    "roi":        returned / invested * 100 if invested else 0,
+                }
+
+    return best or _empty_set(label)
+
+
+def _empty_set(label: str) -> dict:
+    return {
+        "label": label, "selection": [[1]]*5, "sizes": [1]*5,
+        "combos": 1, "hits": 0, "hit_rate": 0.0,
+        "hit_rows": [], "avg_payout": 0, "roi": 0.0,
+    }
 
 
 # ─────────────────────────────────────────────
-# 4セット最適分割
+# 貪欲セットカバー（4セット）
 # ─────────────────────────────────────────────
 
-def split_into_sets(selection: list[list[int]], n_sets: int = 4) -> list[dict]:
+def greedy_cover(rows: list[dict], n_sets: int = 4, budget_per_set: int = 27) -> list[dict]:
     """
-    1つの大選択を4セットに分割して出力用に整形する。
-    各スロットの馬をできるだけ均等に振り分ける。
+    貪欲セットカバー法で n_sets セットを順番に最適化する。
+    各セットは「前のセットで取れなかったイベント」を優先的にカバーする。
     """
     sets = []
+    remaining = list(rows)
+
     for i in range(n_sets):
-        s = {"label": f"セット{chr(65+i)}", "slots": {}}
-        for slot_idx, pops in enumerate(selection):
-            # i番目のセットに割り当てる人気（均等分割）
-            chunk_size = max(1, len(pops) // n_sets)
-            start = i * chunk_size
-            end = start + chunk_size if i < n_sets - 1 else len(pops)
-            chunk = pops[start:end] if start < len(pops) else [pops[-1]]
-            s["slots"][slot_idx] = chunk
-        sets.append(s)
+        label = f"セット{chr(65+i)}"
+        print(f"  {label} 探索中（残り{len(remaining)}開催）...")
+        best = find_best_set(remaining, budget_per_set, label)
+        sets.append(best)
+
+        # 的中済みを除外
+        hit_keys = {(r["held_date"], tuple(r["pops"])) for r in best["hit_rows"]}
+        remaining = [r for r in remaining if (r["held_date"], tuple(r["pops"])) not in hit_keys]
+
     return sets
 
 
 # ─────────────────────────────────────────────
-# レポート出力
+# レポート
 # ─────────────────────────────────────────────
 
-def report(rows: list[dict], results: list[dict], budget: int, top_n: int, years):
+def report(rows: list[dict], sets: list[dict], budget_per_set: int, years):
     n = len(rows)
     label = "全期間" if not years else f"{min(years)}〜{max(years)}年"
     target_rows = [r for r in rows if r["zone"] == "target"]
+    total_cost_per_round = sum(s["combos"] for s in sets) * 100
 
     print(f"\n{'='*70}")
     print(f"  WIN5 買い目最適化結果  {label}  ({n}開催)")
-    print(f"  予算: {budget}通り以内 / ターゲットゾーン({len(target_rows)}開催)で最適化")
+    print(f"  戦略: {len(sets)}セット × 最大{budget_per_set}通り = 最大{budget_per_set*len(sets)}通り/回")
     print(f"{'='*70}")
 
-    # スロット別頻度サマリ
-    print("\n■ スロット別 勝ち馬人気 頻度TOP5（ターゲットゾーン）")
-    print(f"  {'スロット':>8}  " + "  ".join(f"{'#'+str(i+1):>8}" for i in range(5)))
-    print(f"  {'-'*55}")
-    for slot_idx in range(5):
-        freq = slot_freq(target_rows, slot_idx)[:5]
+    # スロット別頻度
+    print("\n■ スロット別 勝ち馬人気 頻度TOP6（ターゲットゾーン）")
+    freq_table = slot_freq_table(target_rows)
+    print(f"  {'スロット':>8}  " + "  ".join(f"{'#'+str(i+1):>9}" for i in range(6)))
+    print(f"  {'-'*65}")
+    for slot_idx, freq in enumerate(freq_table):
         row = f"  slot{slot_idx+1:>4}    "
-        for p, cnt in freq:
+        for p, cnt in freq[:6]:
             pct = cnt / len(target_rows) * 100
             row += f"  {p}番({pct:.0f}%)"
         print(row)
 
-    # 最適解 TOP
-    print(f"\n■ 最適買い目 TOP{top_n}（的中率順）")
-    print(f"  {'#':>3}  {'通り':>5}  {'的中':>5}  {'的中率':>7}  {'平均払戻':>12}  {'回収率':>7}  選択人気")
-    print(f"  {'-'*75}")
+    # 各セット結果
+    print(f"\n■ 最適化4セット構成（貪欲セットカバー法）")
+    all_hit_keys = set()
+    for s in sets:
+        for r in s["hit_rows"]:
+            all_hit_keys.add((r["held_date"], tuple(r["pops"])))
 
-    shown = 0
-    best_result = None
-    for r in results:
-        if shown >= top_n:
-            break
-        pops_str = "  ".join(f"s{i+1}:{r['selection'][i]}" for i in range(5))
+    total_unique_hits = len(all_hit_keys)
+    total_combos      = sum(s["combos"] for s in sets)
+    total_invested    = n * total_cost_per_round
+    total_returned    = sum(r["payout"] for r in rows
+                           if (r["held_date"], tuple(r["pops"])) in all_hit_keys)
+    overall_roi       = total_returned / total_invested * 100 if total_invested else 0
+
+    print(f"\n  4セット合計: {total_combos}通り × 100円 = {total_cost_per_round:,}円/回")
+    print(f"  総的中回数 : {total_unique_hits}回 / {n}開催  ({total_unique_hits/n*100:.2f}%)")
+    print(f"  総回収率   : {overall_roi:.1f}%")
+    print()
+
+    for s in sets:
+        print(f"  ─── {s['label']} ───")
+        print(f"  通り数: {s['combos']:>3}通  的中: {s['hits']:>3}回  "
+              f"的中率: {s['hit_rate']:.2f}%  平均払戻: {s['avg_payout']:,}円")
+        for i, pops in enumerate(s["selection"]):
+            size_label = "固定" if len(pops) == 1 else f"{len(pops)}頭流し"
+            pop_str = " / ".join(f"{p}番人気" for p in pops)
+            print(f"    slot{i+1} [{size_label:>6}]: {pop_str}")
+        if s["hit_rows"]:
+            print(f"  的中例:")
+            for r in sorted(s["hit_rows"], key=lambda x: -x["payout"])[:3]:
+                print(f"    {r['held_date']}  {r['pops']}  {r['payout']:,}円")
+        print()
+
+    # 現行との比較
+    _compare_with_current(rows, sets, total_unique_hits, total_cost_per_round, n)
+
+    # 年別推移
+    _yearly_breakdown(rows, sets)
+
+    # 購入金額の適正分析
+    _stake_analysis(rows, total_unique_hits, n, total_cost_per_round)
+
+
+def _compare_with_current(rows, opt_sets, opt_hits, opt_cost_per_round, n):
+    """現行buy.pyのセット定義と比較"""
+    try:
+        from backtest import SETS as CURRENT_SETS
+        current_hits = set()
+        for r in rows:
+            for s in CURRENT_SETS:
+                if all(r["pops"][i] in s["slots"][i] for i in range(5)):
+                    current_hits.add((r["held_date"], tuple(r["pops"])))
+
+        current_cost  = 108 * 100
+        current_inv   = n * current_cost
+        current_ret   = sum(r["payout"] for r in rows
+                           if (r["held_date"], tuple(r["pops"])) in current_hits)
+        current_roi   = current_ret / current_inv * 100 if current_inv else 0
+
+        opt_inv = n * opt_cost_per_round
+        opt_ret = sum(r["payout"] for r in rows
+                     if (r["held_date"], tuple(r["pops"])) in
+                     {(r2["held_date"], tuple(r2["pops"])) for s in opt_sets for r2 in s["hit_rows"]})
+        opt_roi = opt_ret / opt_inv * 100 if opt_inv else 0
+
+        print(f"■ 現行セット vs 最適化後 比較（全期間）")
+        print(f"  {'':>14}  {'1回コスト':>10}  {'総的中':>6}  {'的中率':>7}  {'回収率':>8}")
+        print(f"  {'-'*55}")
         print(
-            f"  {shown+1:>3}  "
-            f"{r['combos']:>4}通  "
-            f"{r['hits']:>4}回  "
-            f"{r['hit_rate']:>6.2f}%  "
-            f"{r['avg_payout']:>12,}円  "
-            f"{r['roi']:>6.1f}%  "
-            f"{pops_str}"
+            f"  {'現行4セット':>14}  {current_cost:>8,}円  "
+            f"{len(current_hits):>5}回  "
+            f"{len(current_hits)/n*100:>6.2f}%  "
+            f"{current_roi:>7.1f}%"
         )
-        if shown == 0:
-            best_result = r
-        shown += 1
-
-    if best_result is None:
-        print("  データなし")
-        return
-
-    # ベスト構成の詳細
-    print(f"\n■ 最適構成の詳細（1位）")
-    sel = best_result["selection"]
-    combos = best_result["combos"]
-    print(f"  総通り数: {combos}通り × 100円 = {combos*100:,}円/回")
-    print(f"  的中率  : {best_result['hit_rate']:.2f}%  （平均{int(100/best_result['hit_rate']) if best_result['hit_rate'] else '∞'}回に1回）")
-    print(f"  回収率  : {best_result['roi']:.1f}%")
-    print()
-    for i, pops in enumerate(sel):
-        freq = slot_freq(target_rows, i)
-        freq_map = {p: cnt for p, cnt in freq}
-        pops_detail = "  ".join(
-            f"{p}番人気({freq_map.get(p,0)/len(target_rows)*100:.0f}%)" for p in pops
+        print(
+            f"  {'最適化セット':>14}  {opt_cost_per_round:>8,}円  "
+            f"{opt_hits:>5}回  "
+            f"{opt_hits/n*100:>6.2f}%  "
+            f"{opt_roi:>7.1f}%"
         )
-        print(f"  slot{i+1}: {pops_detail}")
-
-    # 的中時の詳細
-    hit_rows = best_result["hit_rows"]
-    if hit_rows:
-        print(f"\n  【的中例】")
-        print(f"  {'日付':>12}  {'人気パターン':>22}  {'和':>4}  {'払戻':>14}")
-        for r in sorted(hit_rows, key=lambda x: -x["payout"])[:10]:
-            print(
-                f"  {str(r['held_date']):>12}  "
-                f"{str(r['pops']):>22}  "
-                f"{r['popularity_sum']:>4}  "
-                f"{r['payout']:>14,}円"
-            )
-
-    # 現行セットとの比較
-    _compare_with_current(rows, best_result)
-
-    # 4セット分割案
-    _show_4set_plan(best_result, target_rows)
+        print()
+    except ImportError:
+        pass
 
 
-def _compare_with_current(rows: list[dict], best: dict):
-    """現行セット定義との的中率比較"""
-    from backtest import SETS, COST_PER_SET
-
-    current_hits = [r for r in rows if any(
-        all(r["pops"][i] in s["slots"][i] for i in range(5))
-        for s in SETS
-    )]
-    current_invested = len(rows) * COST_PER_SET * len(SETS)
-    current_return   = sum(r["payout"] for r in current_hits)
-    current_roi      = current_return / current_invested * 100 if current_invested else 0
-
-    best_invested = len(rows) * best["combos"] * 100
-    best_return   = sum(r["payout"] for r in rows if hits(r["pops"], best["selection"]))
-    best_roi      = best_return / best_invested * 100 if best_invested else 0
-
-    print(f"\n■ 現行セット vs 最適化後 比較")
-    print(f"  {'':>12}  {'通り数':>6}  {'的中':>5}  {'的中率':>7}  {'回収率':>8}")
-    print(f"  {'-'*50}")
-    n = len(rows)
-    print(
-        f"  {'現行4セット':>12}  "
-        f"{108:>5}通  "
-        f"{len(current_hits):>4}回  "
-        f"{len(current_hits)/n*100:>6.2f}%  "
-        f"{current_roi:>7.1f}%"
-    )
-    print(
-        f"  {'最適化セット':>12}  "
-        f"{best['combos']:>5}通  "
-        f"{best['hits']:>4}回  "
-        f"{best['hit_rate']:>6.2f}%  "
-        f"{best_roi:>7.1f}%"
-    )
-
-
-def _show_4set_plan(best: dict, target_rows: list[dict]):
-    """最適構成をベースに4セット分割案を表示"""
-    sel = best["selection"]
-
-    print(f"\n■ 最適構成を4セットに分割する案")
-    print(f"  （各セットは独立した人気の組み合わせ）")
-
-    # スロットごとに「固定（1頭）」「流し（複数）」を決める
-    # 出現頻度が高い人気を固定候補とする
-    slot_sizes = [len(s) for s in sel]
-    print(f"\n  現在の選択サイズ: {slot_sizes}  → 積={_combo_count(sel)}通り")
+def _yearly_breakdown(rows: list[dict], sets: list[dict]):
+    all_hit_keys = {
+        (r["held_date"], tuple(r["pops"]))
+        for s in sets for r in s["hit_rows"]
+    }
+    print(f"■ 年別 的中率・回収率（最適化後）")
+    print(f"  {'年':>6}  {'開催':>5}  {'的中':>5}  {'的中率':>7}  {'回収率':>8}")
+    print(f"  {'-'*42}")
+    year_map: dict[int, list] = {}
+    for r in rows:
+        y = r["held_date"].year
+        year_map.setdefault(y, []).append(r)
+    total_cost_per_round = sum(s["combos"] for s in sets) * 100
+    for y in sorted(year_map):
+        yr = year_map[y]
+        yh = [r for r in yr if (r["held_date"], tuple(r["pops"])) in all_hit_keys]
+        invested = len(yr) * total_cost_per_round
+        returned = sum(r["payout"] for r in yh)
+        roi = returned / invested * 100 if invested else 0
+        print(f"  {y:>6}年  {len(yr):>4}回  {len(yh):>4}回  {len(yh)/len(yr)*100:>6.1f}%  {roi:>7.1f}%")
     print()
 
-    for i, pops in enumerate(sel):
-        size_label = "固定" if len(pops) == 1 else f"{len(pops)}頭流し"
-        pop_str = " / ".join(f"{p}番人気" for p in pops)
-        print(f"  slot{i+1} [{size_label}]: {pop_str}")
 
-    cost = _combo_count(sel) * 100
-    print(f"\n  → 1セット {_combo_count(sel)}通り × 100円 = {cost:,}円")
-    print(f"  → 同じ構成を1回買うだけでOK（4分割不要）")
+def _stake_analysis(rows, n_hits, n_total, cost_per_round):
+    hit_rate = n_hits / n_total if n_total else 0
+    all_hit_keys_lookup = set()  # simplified for stake analysis
+    avg_rounds = int(1 / hit_rate) if hit_rate else 9999
+    min_bankroll = avg_rounds * cost_per_round
+
+    print(f"■ 購入金額の適正分析")
+    print(f"  的中率         : {hit_rate*100:.2f}%  （平均{avg_rounds}回に1回）")
+    print(f"  1回あたりコスト: {cost_per_round:,}円")
+    print(f"  破産しない目安 : {avg_rounds}回 × {cost_per_round:,}円 = {min_bankroll:,}円")
     print()
-    print(f"  ※ 通り数が多すぎる場合は --budget で絞り込んでください")
+    print(f"  【資金別 推奨スタンス】")
+    for bankroll in [50_000, 100_000, 300_000, 500_000, 1_000_000]:
+        max_rounds    = bankroll // cost_per_round
+        survive_prob  = (1 - hit_rate) ** max_rounds * 100 if max_rounds < 10000 else 0
+        print(
+            f"  {bankroll:>10,}円  →  {max_rounds:>4}回継続可能  "
+            f"全損リスク: {survive_prob:.1f}%"
+        )
+    print()
 
 
 # ─────────────────────────────────────────────
@@ -358,13 +352,16 @@ def _show_4set_plan(best: dict, target_rows: list[dict]):
 # ─────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="WIN5 買い目最適化")
+    parser = argparse.ArgumentParser(description="WIN5 買い目最適化（貪欲セットカバー法）")
     parser.add_argument("--year",   type=int, action="append", dest="years", metavar="YYYY")
     parser.add_argument("--last",   type=int, metavar="N")
     parser.add_argument("--all",    action="store_true")
-    parser.add_argument("--budget", type=int, default=108, help="最大通り数（デフォルト108）")
-    parser.add_argument("--top",    type=int, default=20,  help="表示件数（デフォルト20）")
-    parser.add_argument("--zone",   type=str, default="target", choices=["target", "all"],
+    parser.add_argument("--budget", type=int, default=27,
+                        help="1セットあたりの最大通り数（デフォルト27）")
+    parser.add_argument("--sets",   type=int, default=4,
+                        help="セット数（デフォルト4）")
+    parser.add_argument("--zone",   type=str, default="target",
+                        choices=["target", "all"],
                         help="最適化対象ゾーン（デフォルト: target）")
     args = parser.parse_args()
 
@@ -382,11 +379,11 @@ def main():
         print("データがありません。collect.py でデータ収集してください。")
         return
 
-    zone_filter = None if args.zone == "all" else args.zone
-    print(f"最適化実行中（予算{args.budget}通り、ゾーン={args.zone}）...")
-    results = optimize(rows, budget=args.budget, top_n=args.top, zone_filter=zone_filter)
+    zone_rows = rows if args.zone == "all" else [r for r in rows if r["zone"] == "target"]
+    print(f"最適化実行中（1セット{args.budget}通り × {args.sets}セット、ゾーン={args.zone}）...")
+    sets = greedy_cover(zone_rows, n_sets=args.sets, budget_per_set=args.budget)
 
-    report(rows, results, args.budget, args.top, years)
+    report(rows, sets, args.budget, years)
 
 
 if __name__ == "__main__":
