@@ -115,17 +115,23 @@ def enum_size_configs(budget: int, n_slots: int = 5, min_size: int = 1, max_size
     """
     configs = set()
 
-    def recurse(slot: int, remaining: int, current: list):
+    def _prod(lst):
+        r = 1
+        for x in lst:
+            r *= x
+        return r
+
+    def recurse(slot: int, current: list):
         if slot == n_slots:
-            if _combo_count(current) <= budget:
+            if _prod(current) <= budget:
                 configs.add(tuple(sorted(current)))
             return
-        for size in range(min_size, min(max_size, remaining) + 1):
-            if size > remaining:
+        for size in range(min_size, max_size + 1):
+            if _prod(current + [size]) > budget:
                 break
-            recurse(slot + 1, remaining, current + [size])
+            recurse(slot + 1, current + [size])
 
-    recurse(0, budget, [])
+    recurse(0, [])
     return sorted(configs)
 
 
