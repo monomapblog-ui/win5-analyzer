@@ -1,27 +1,102 @@
 """出馬表・オッズ取得
 
-URL:
-  出馬表: https://race.netkeiba.com/race/shutuba.html?race_id=RACEID
-  単勝オッズ: https://race.netkeiba.com/odds/index.html?race_id=RACEID&type=b1
+確認済み構造:
+  オッズ: class=RaceOdds_HorseList_Table  列: 枠|馬番|印|選択|馬名|オッズ
+  出馬表: class=Shutuba_Table             列: 枠|馬番|印|馬名|性齢|斤量|騎手|厩舎
 """
 import re
 from collectors.netkeiba import _get
 from bs4 import BeautifulSoup
 
 
+def fetch_odds(race_id: str) -> list[dict]:
+    """
+    単勝オッズページから馬番・馬名・オッズを取得し人気順に並べる。
+    レース終了済み（オッズ=---.-）の場合はDBの結果から取得するフォールバック付き。
+
+    返り値: [{"horse_number": N, "horse_name": "xxx", "odds": X, "popularity": N}, ...]
+    """
+    url = f"https://race.netkeiba.com/odds/index.html?race_id={race_id}&type=b1"
+    resp = _get(url)
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+
+    horses = []
+    table = soup.find("table", class_="RaceOdds_HorseList_Table")
+    if table:
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 6:
+                continue
+            # 枠(0) | 馬番(1) | 印(2) | 選択(3) | 馬名(4) | オッズ(5)
+            horse_number = _parse_int(cells[1].get_text())
+            if horse_number is None:
+                continue
+            horse_name = cells[4].get_text(strip=True)
+            odds_text  = cells[5].get_text(strip=True)
+            odds       = _parse_float(odds_text)  # ---.- の場合は None
+            horses.append({
+                "horse_number": horse_number,
+                "horse_name":   horse_name,
+                "odds":         odds,
+            })
+
+    # オッズが全てNone（レース終了済み）→ DBから人気を取得
+    valid_odds = [h for h in horses if h["odds"] is not None]
+    if not valid_odds and horses:
+        horses = _fallback_from_db(race_id, horses)
+    else:
+        # オッズ順にソートして人気を付与
+        horses.sort(key=lambda x: (x["odds"] is None, x["odds"] or 9999))
+        for i, h in enumerate(horses):
+            h["popularity"] = i + 1
+
+    return horses
+
+
+def _fallback_from_db(race_id: str, horses: list[dict]) -> list[dict]:
+    """レース終了済みの場合、DBの結果から人気順を取得する"""
+    try:
+        from utils.db import SessionLocal
+        from utils.db import Entry, Race
+        from sqlalchemy import select
+
+        with SessionLocal() as session:
+            race = session.scalar(select(Race).where(Race.race_id == race_id))
+            if race is None:
+                return horses
+            entries = session.execute(
+                select(Entry)
+                .where(Entry.race_id == race.id)
+                .where(Entry.popularity.is_not(None))
+                .order_by(Entry.popularity)
+            ).scalars().all()
+
+            pop_map = {e.horse_number: e.popularity for e in entries}
+            odds_map = {e.horse_number: e.odds for e in entries}
+
+            for h in horses:
+                h["popularity"] = pop_map.get(h["horse_number"])
+                h["odds"]       = odds_map.get(h["horse_number"])
+
+            horses = [h for h in horses if h["popularity"] is not None]
+            horses.sort(key=lambda x: x["popularity"])
+    except Exception:
+        pass
+
+    return horses
+
+
 def fetch_shutuba(race_id: str) -> list[dict]:
     """
-    出馬表から馬番・馬名を取得する。
-    返り値: [{"horse_number": 1, "horse_name": "xxx"}, ...]
+    出馬表から枠番・馬番・馬名を取得する。
+    返り値: [{"frame_number": 1, "horse_number": 1, "horse_name": "xxx"}, ...]
     """
     url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
     resp = _get(url)
     soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
 
     horses = []
-    table = soup.find("table", class_=re.compile(r"Shutuba_Table|shutuba"))
-    if table is None:
-        table = soup.find("table")
+    table = soup.find("table", class_="Shutuba_Table")
     if table is None:
         return horses
 
@@ -29,59 +104,17 @@ def fetch_shutuba(race_id: str) -> list[dict]:
         cells = row.find_all("td")
         if len(cells) < 4:
             continue
-        horse_number = _parse_int(cells[1].get_text()) if len(cells) > 1 else None
+        # 枠(0) | 馬番(1) | 印(2) | 馬名(3) | ...
+        frame_number  = _parse_int(cells[0].get_text())
+        horse_number  = _parse_int(cells[1].get_text())
         if horse_number is None:
             continue
-        horse_name = cells[3].get_text(strip=True) if len(cells) > 3 else ""
-        horses.append({"horse_number": horse_number, "horse_name": horse_name})
-
-    return horses
-
-
-def fetch_odds(race_id: str) -> list[dict]:
-    """
-    単勝オッズページから馬番・オッズを取得し人気順に並べる。
-    返り値: [{"horse_number": 1, "horse_name": "xxx", "odds": 2.5, "popularity": 1}, ...]
-    """
-    url = f"https://race.netkeiba.com/odds/index.html?race_id={race_id}&type=b1"
-    resp = _get(url)
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
-
-    horses = []
-
-    # 単勝オッズテーブル
-    table = soup.find("table", id=re.compile(r"odds_tan_table|OddsTanQuinellaWide"))
-    if table is None:
-        table = soup.find("table", class_=re.compile(r"Odds.*Table|odds.*table", re.I))
-    if table is None:
-        for t in soup.find_all("table"):
-            rows = t.find_all("tr")
-            if len(rows) > 5:
-                table = t
-                break
-
-    if table:
-        for row in table.find_all("tr"):
-            cells = row.find_all("td")
-            if len(cells) < 3:
-                continue
-            horse_number = _parse_int(cells[0].get_text())
-            if horse_number is None:
-                continue
-            horse_name = cells[1].get_text(strip=True) if len(cells) > 1 else ""
-            odds_text = cells[-1].get_text(strip=True) if cells else ""
-            odds = _parse_float(odds_text)
-            if odds and odds > 0:
-                horses.append({
-                    "horse_number": horse_number,
-                    "horse_name":   horse_name,
-                    "odds":         odds,
-                })
-
-    # オッズ順にソートして人気を付与
-    horses.sort(key=lambda x: x["odds"])
-    for i, h in enumerate(horses):
-        h["popularity"] = i + 1
+        horse_name = cells[3].get_text(strip=True)
+        horses.append({
+            "frame_number": frame_number,
+            "horse_number": horse_number,
+            "horse_name":   horse_name,
+        })
 
     return horses
 
@@ -98,6 +131,6 @@ def _parse_float(text):
         return None
     s = re.sub(r"[^\d.]", "", str(text))
     try:
-        return float(s) if s else None
+        return float(s) if s and s != "." else None
     except ValueError:
         return None
