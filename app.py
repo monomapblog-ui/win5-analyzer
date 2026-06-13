@@ -29,22 +29,32 @@ def _latest_win5_date() -> str:
 
 
 def _fetch_slots(date_str: str):
+    print(f"[INFO] WIN5レース取得: {date_str}")
     slots_info = get_win5_race_ids(date_str)
     if not slots_info:
-        return None, None, f"{date_str} のWIN5データが見つかりません"
+        return None, None, f"{date_str} のWIN5データが見つかりません（開催がないか、まだ公開されていない可能性があります）"
 
+    print(f"[INFO] {len(slots_info)}レース取得完了")
     slots_odds = []
     for slot in slots_info:
         race_id = slot.get("race_id")
         if not race_id:
+            print(f"[WARN] slot{slot['slot_number']} race_id なし")
             slots_odds.append([])
             continue
         try:
+            print(f"[INFO] オッズ取得: {slot['name']} ({race_id})")
             odds = fetch_odds(race_id)
+            print(f"[INFO]   → {len(odds)}頭")
             slots_odds.append(odds)
-        except Exception:
+        except Exception as e:
+            print(f"[ERROR] オッズ取得失敗: {e}")
             slots_odds.append([])
         time.sleep(0.5)
+
+    empty = [i+1 for i, o in enumerate(slots_odds) if not o]
+    if empty:
+        print(f"[WARN] オッズ未取得スロット: {empty}")
 
     return slots_info, slots_odds, None
 
@@ -62,6 +72,7 @@ def generate():
 
     if not date_str:
         date_str = _latest_win5_date()
+        print(f"[INFO] 最新WIN5日付: {date_str}")
 
     if budget < 1000:
         return jsonify({"error": "予算は1,000円以上を指定してください"}), 400
