@@ -117,5 +117,23 @@ class Win5Slot(Base):
     )
 
 
+class Win5RaceFeature(Base):
+    """WIN5各スロットのレース特徴量（難易度分析用）"""
+    __tablename__ = "win5_race_features"
+
+    id              = Column(Integer, primary_key=True)
+    slot_id         = Column(Integer, ForeignKey("win5_slots.id"), unique=True, nullable=False)
+    field_size      = Column(Integer)    # 出走頭数
+    course_type     = Column(String(4))  # 芝 / ダート / 障害
+    distance        = Column(Integer)    # 距離(m)
+    track_condition = Column(String(6))  # 良 / 稍重 / 重 / 不良
+    fav1_odds       = Column(Float)      # 1番人気単勝オッズ
+    fav2_odds       = Column(Float)      # 2番人気単勝オッズ
+    winner_odds     = Column(Float)      # 勝ち馬オッズ
+    winner_pop      = Column(Integer)    # 勝ち馬人気（再確認用）
+
+    slot = relationship("Win5Slot", backref="feature")
+
+
 def init_db():
     Base.metadata.create_all(engine)

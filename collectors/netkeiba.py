@@ -277,6 +277,80 @@ def fetch_race_result(race_id: str) -> dict:
 
 
 # ─────────────────────────────────────────────
+# レース特徴量（難易度分析用）
+# ─────────────────────────────────────────────
+
+def fetch_race_features(race_id: str) -> dict:
+    """
+    レース結果ページから特徴量を抽出する。
+    返り値:
+      field_size, course_type, distance, track_condition,
+      fav1_odds, fav2_odds, winner_odds, winner_pop, entries
+    """
+    url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
+    resp = _get(url)
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+
+    # ── コース・距離・馬場 ──
+    course_type     = None
+    distance        = None
+    track_condition = None
+
+    race_data = soup.find("div", class_="RaceData01")
+    if race_data:
+        text = race_data.get_text(" ", strip=True)
+        # 例: "芝2400m / 良" or "ダ1600m / 稍重"
+        m = re.search(r"(芝|ダート|ダ|障害)([\d,]+)m", text)
+        if m:
+            raw = m.group(1)
+            course_type = "芝" if raw == "芝" else ("ダート" if raw in ("ダ", "ダート") else "障害")
+            distance = int(m.group(2).replace(",", ""))
+        for cond in ["良", "稍重", "重", "不良"]:
+            if cond in text:
+                track_condition = cond
+                break
+
+    # ── 出走馬・オッズ ──
+    entries = []
+    table = soup.find("table", class_=re.compile(r"RaceTable01|race_table_01"))
+    if table is None:
+        for t in soup.find_all("table"):
+            if len(t.find_all("tr")) > 3:
+                table = t
+                break
+
+    if table:
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 5:
+                continue
+            finish_pos = _parse_int(cells[0].get_text())
+            if finish_pos is None:
+                continue
+            popularity = _parse_int(cells[9].get_text())  if len(cells) > 9  else None
+            odds       = _parse_float(cells[10].get_text()) if len(cells) > 10 else None
+            entries.append({"finish_pos": finish_pos, "popularity": popularity, "odds": odds})
+
+    field_size = len(entries)
+    fav1_odds  = next((e["odds"] for e in entries if e["popularity"] == 1), None)
+    fav2_odds  = next((e["odds"] for e in entries if e["popularity"] == 2), None)
+    winner     = next((e for e in entries if e["finish_pos"] == 1), None)
+    winner_odds = winner["odds"]    if winner else None
+    winner_pop  = winner["popularity"] if winner else None
+
+    return {
+        "field_size":      field_size,
+        "course_type":     course_type,
+        "distance":        distance,
+        "track_condition": track_condition,
+        "fav1_odds":       fav1_odds,
+        "fav2_odds":       fav2_odds,
+        "winner_odds":     winner_odds,
+        "winner_pop":      winner_pop,
+    }
+
+
+# ─────────────────────────────────────────────
 # 内部ヘルパー
 # ─────────────────────────────────────────────
 
