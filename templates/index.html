@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WIN5 買い目生成</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
+      background: #0f1923;
+      color: #e8e8e8;
+      min-height: 100vh;
+    }
+    header {
+      background: linear-gradient(135deg, #1a2a4a, #0d3b6e);
+      padding: 20px 24px;
+      border-bottom: 2px solid #2a5298;
+    }
+    header h1 {
+      font-size: 1.6rem;
+      color: #ffd700;
+      letter-spacing: 0.05em;
+    }
+    header p { font-size: 0.85rem; color: #8ba3c0; margin-top: 4px; }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+
+    /* ─── 入力フォーム ─── */
+    .form-card {
+      background: #1a2535;
+      border: 1px solid #2a3d55;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .form-card h2 { font-size: 1rem; color: #8ba3c0; margin-bottom: 16px; }
+    .form-row { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 0.8rem; color: #8ba3c0; }
+    .form-group input {
+      background: #0f1923;
+      border: 1px solid #2a3d55;
+      border-radius: 8px;
+      color: #e8e8e8;
+      padding: 10px 14px;
+      font-size: 1rem;
+      width: 200px;
+    }
+    .form-group input:focus { outline: none; border-color: #ffd700; }
+    .btn-generate {
+      background: linear-gradient(135deg, #f0a500, #ffd700);
+      color: #0f1923;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 32px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-generate:hover { opacity: 0.85; }
+    .btn-generate:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .budget-presets { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .preset-btn {
+      background: #1a2535;
+      border: 1px solid #2a5298;
+      border-radius: 6px;
+      color: #8ba3c0;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover, .preset-btn.active {
+      background: #2a3d55;
+      border-color: #ffd700;
+      color: #ffd700;
+    }
+
+    /* ─── ステータス ─── */
+    #status {
+      background: #1a2535;
+      border: 1px solid #2a3d55;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    #status.loading { border-color: #2a5298; color: #8ba3c0; }
+    #status.error { border-color: #c0392b; color: #e74c3c; }
+    #status.ok { border-color: #27ae60; color: #2ecc71; }
+
+    /* ─── サマリー ─── */
+    .summary-bar {
+      background: linear-gradient(135deg, #0d3b6e, #1a2a4a);
+      border: 1px solid #2a5298;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .summary-item { display: flex; flex-direction: column; gap: 2px; }
+    .summary-item .label { font-size: 0.75rem; color: #8ba3c0; }
+    .summary-item .value { font-size: 1.3rem; font-weight: bold; color: #ffd700; }
+
+    /* ─── レース一覧 ─── */
+    .races-bar {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;
+    }
+    .race-chip {
+      background: #1a2535;
+      border: 1px solid #2a3d55;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      color: #8ba3c0;
+    }
+    .race-chip span { color: #ffd700; font-weight: bold; margin-right: 4px; }
+
+    /* ─── チケット ─── */
+    .ticket {
+      background: #1a2535;
+      border: 1px solid #2a3d55;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .ticket-header {
+      background: #0d3b6e;
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .ticket-header .ticket-no {
+      font-size: 0.85rem;
+      color: #8ba3c0;
+    }
+    .ticket-header .ticket-info {
+      display: flex; gap: 20px; align-items: center;
+    }
+    .ticket-header .combos { color: #ffd700; font-weight: bold; }
+    .ticket-header .range-badge {
+      background: #1a4a1a;
+      border: 1px solid #27ae60;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      color: #2ecc71;
+    }
+
+    .ticket-body { padding: 0; }
+    table.slot-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    table.slot-table th {
+      background: #141e2e;
+      color: #8ba3c0;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: normal;
+      font-size: 0.75rem;
+      border-bottom: 1px solid #2a3d55;
+    }
+    table.slot-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #1e2d42;
+      vertical-align: middle;
+    }
+    table.slot-table tr:last-child td { border-bottom: none; }
+    .slot-num { color: #8ba3c0; font-size: 0.8rem; }
+    .race-name { color: #c0d0e0; }
+    .pop-range { color: #8ba3c0; font-size: 0.8rem; }
+
+    .horse-list { display: flex; gap: 8px; flex-wrap: wrap; }
+    .horse-chip {
+      display: flex; align-items: center; gap: 4px;
+      background: #0f1923;
+      border: 1px solid #2a3d55;
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 0.8rem;
+    }
+    .horse-chip .num {
+      background: #2a5298;
+      color: #fff;
+      border-radius: 3px;
+      padding: 0 5px;
+      font-weight: bold;
+      font-size: 0.75rem;
+      min-width: 22px;
+      text-align: center;
+    }
+    .horse-chip .pop { color: #f0a500; font-size: 0.7rem; }
+
+    /* IPAT入力欄 */
+    .ipat-row {
+      background: #0f1923;
+      border-top: 1px solid #2a3d55;
+      padding: 12px 18px;
+    }
+    .ipat-row .ipat-label {
+      font-size: 0.75rem;
+      color: #8ba3c0;
+      margin-bottom: 6px;
+    }
+    .ipat-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ipat-slot {
+      background: #1a2535;
+      border: 1px solid #2a5298;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-family: monospace;
+      color: #e8e8e8;
+    }
+    .ipat-slot span { color: #8ba3c0; font-size: 0.75rem; margin-right: 4px; }
+
+    #result { display: none; }
+
+    .zone-note {
+      background: #0f2a1a;
+      border: 1px solid #27ae60;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 0.8rem;
+      color: #2ecc71;
+      margin-bottom: 20px;
+    }
+    .zone-note strong { color: #ffd700; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏇 WIN5 買い目生成</h1>
+    <p>ターゲットゾーン（人気の和 15〜22）を広範囲カバー / 低ゾーン 0 通り保証</p>
+  </header>
+
+  <div class="container">
+    <!-- 入力フォーム -->
+    <div class="form-card">
+      <h2>購入条件を設定</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label>日付（空欄で最新WIN5）</label>
+          <input type="text" id="date-input" placeholder="例: 20260614" maxlength="8">
+        </div>
+        <div class="form-group">
+          <label>予算</label>
+          <input type="number" id="budget-input" value="50000" step="1000" min="1000">
+        </div>
+        <button class="btn-generate" id="gen-btn" onclick="generate()">買い目を生成</button>
+      </div>
+      <div class="budget-presets">
+        <span style="font-size:0.75rem;color:#8ba3c0;align-self:center;">プリセット:</span>
+        <button class="preset-btn" onclick="setPreset(30000)">3万円</button>
+        <button class="preset-btn active" onclick="setPreset(50000)">5万円</button>
+        <button class="preset-btn" onclick="setPreset(80000)">8万円</button>
+        <button class="preset-btn" onclick="setPreset(100000)">10万円</button>
+      </div>
+    </div>
+
+    <!-- ステータス -->
+    <div id="status"></div>
+
+    <!-- 結果 -->
+    <div id="result">
+      <div class="zone-note">
+        <strong>✔ 低ゾーン 0 通り保証</strong>
+        — 全チケット・全組み合わせが人気の和 <strong>15〜22</strong> に収まります
+      </div>
+      <div class="summary-bar" id="summary"></div>
+      <div class="races-bar" id="races-bar"></div>
+      <div id="tickets"></div>
+    </div>
+  </div>
+
+  <script>
+    function setPreset(v) {
+      document.getElementById('budget-input').value = v;
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+    }
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = type;
+      el.style.display = 'block';
+    }
+
+    async function generate() {
+      const btn = document.getElementById('gen-btn');
+      const dateVal = document.getElementById('date-input').value.trim();
+      const budget = parseInt(document.getElementById('budget-input').value);
+
+      if (isNaN(budget) || budget < 1000) {
+        setStatus('予算は1,000円以上を入力してください', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      document.getElementById('result').style.display = 'none';
+      setStatus('データ取得中… しばらくお待ちください（10〜30秒）', 'loading');
+
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({budget, date: dateVal}),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          setStatus('エラー: ' + (data.error || res.statusText), 'error');
+          return;
+        }
+
+        setStatus(
+          `✔ ${data.date_label} の買い目を生成しました — ${data.total_tickets}チケット / ${data.total_combos}通り / ${data.total_cost.toLocaleString()}円`,
+          'ok'
+        );
+        renderResult(data);
+      } catch (e) {
+        setStatus('通信エラー: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderResult(data) {
+      // サマリー
+      document.getElementById('summary').innerHTML = `
+        <div class="summary-item"><div class="label">開催日</div><div class="value">${data.date_label}</div></div>
+        <div class="summary-item"><div class="label">チケット数</div><div class="value">${data.total_tickets}</div></div>
+        <div class="summary-item"><div class="label">総通り数</div><div class="value">${data.total_combos.toLocaleString()}</div></div>
+        <div class="summary-item"><div class="label">合計金額</div><div class="value">${data.total_cost.toLocaleString()}円</div></div>
+      `;
+
+      // レース一覧
+      document.getElementById('races-bar').innerHTML = data.races.map(r =>
+        `<div class="race-chip"><span>R${r.slot}</span>${r.name}</div>`
+      ).join('');
+
+      // チケット
+      document.getElementById('tickets').innerHTML = data.tickets.map(t => `
+        <div class="ticket">
+          <div class="ticket-header">
+            <div class="ticket-no">チケット ${t.ticket_no}</div>
+            <div class="ticket-info">
+              <span class="range-badge">和 ${t.sum_lo}〜${t.sum_hi}</span>
+              <span class="combos">${t.combos}通り / ${t.cost.toLocaleString()}円</span>
+            </div>
+          </div>
+          <div class="ticket-body">
+            <table class="slot-table">
+              <thead>
+                <tr>
+                  <th>スロット</th>
+                  <th>レース</th>
+                  <th>人気帯</th>
+                  <th>出走馬</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${t.slots.map(s => `
+                  <tr>
+                    <td class="slot-num">R${s.slot}</td>
+                    <td class="race-name">${s.race_name}</td>
+                    <td class="pop-range">${s.popularity_range}</td>
+                    <td>
+                      <div class="horse-list">
+                        ${s.horses.map(h => `
+                          <div class="horse-chip">
+                            <span class="num">${h.number}</span>
+                            ${h.name}
+                            <span class="pop">${h.popularity}人気</span>
+                          </div>
+                        `).join('')}
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <div class="ipat-row">
+              <div class="ipat-label">IPAT 入力（馬番）</div>
+              <div class="ipat-grid">
+                ${t.slots.map(s => `
+                  <div class="ipat-slot">
+                    <span>R${s.slot}</span>${s.numbers.join('・')}番
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('result').style.display = 'block';
+    }
+
+    // Enterキーで生成
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') generate();
+    });
+  </script>
+</body>
+</html>
