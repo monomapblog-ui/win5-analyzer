@@ -108,10 +108,11 @@ def _build_pure_set(lo: tuple, ranked: list, max_avail: list) -> dict | None:
     }
 
 
-def generate_pure_zone_sets(slots_odds: list[list[dict]], budget_yen: int) -> list[dict]:
+def generate_pure_zone_sets(slots_odds: list[list[dict]], budget_yen: int, max_tickets: int = 10) -> list[dict]:
     """
     低ゾーン0通り保証の純粋ターゲットゾーンセットを複数生成する。
     各セットは独立したIPATチケットとして入力する。
+    IPAT上限に合わせてmax_tickets=10で制限。
     """
     target = budget_yen // 100
     ranked = [
@@ -141,11 +142,11 @@ def generate_pure_zone_sets(slots_odds: list[list[dict]], budget_yen: int) -> li
             seen_hi.add(c["hi"])
             unique.append(c)
 
-    # 予算に達するまで貪欲に追加
+    # 予算 or 10チケット上限に達するまで貪欲に追加
     selected = []
     total = 0
     for c in unique:
-        if total >= target:
+        if total >= target or len(selected) >= max_tickets:
             break
         selected.append(c)
         total += c["combos"]
