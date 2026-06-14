@@ -141,28 +141,48 @@ def report(rows):
         avg_pay = int(sum(r["payout"] for r in tgt) / len(tgt)) if tgt else 0
         print(f"  {label:>16}: {len(grp):>4}開催  TGT{len(tgt)/len(grp)*100:>5.1f}%  平均払戻{avg_pay:>10,}円")
 
-    # ── 推奨フィルタ（仮） ──
-    print(f"\n■ 「買う週」フィルタ試案")
-    print(f"  条件: 5レース平均1番人気オッズ ≤ 3.5倍 かつ 最大1番人気オッズ ≤ 6.0倍")
-    filtered = [
-        r for r in rows
-        if r["avg_fav1_odds"] is not None and r["avg_fav1_odds"] <= 3.5
-        and r["max_fav1_odds"] is not None and r["max_fav1_odds"] <= 6.0
-    ]
-    tgt_f = [r for r in filtered if r["zone"] == "target"]
-    if filtered:
-        print(f"  該当開催: {len(filtered)}回 / {n}回（{len(filtered)/n*100:.1f}%に絞り込み）")
-        print(f"  ターゲット率: {len(tgt_f)/len(filtered)*100:.1f}%  （全体: {len(target)/n*100:.1f}%）")
-        avg_pay_f = int(sum(r["payout"] for r in tgt_f) / len(tgt_f)) if tgt_f else 0
-        print(f"  平均払戻（的中時）: {avg_pay_f:,}円")
-    else:
-        print("  該当なし（データ不足）")
+    # ── スキップ条件（データから導出） ──
+    print(f"\n■ スキップ推奨条件（データ根拠あり）")
 
-    # ── 今週の特徴量チェック用ヒント ──
-    print(f"\n■ 毎週チェックすべき指標")
-    print(f"  1. 5レースの1番人気オッズを確認 → 平均3.5倍以下なら「固い週」")
-    print(f"  2. 最も荒れそうなレースの1番人気オッズ → 6倍超なら「スキップ推奨」")
-    print(f"  3. 重・不良馬場が2レース以上 → 高ゾーン化リスク高（スキップ候補）")
+    skip_small = [r for r in rows if r["avg_field_size"] < 12]
+    skip_heavy = [r for r in rows if r["n_heavy"] >= 3]
+    skip_any   = [r for r in rows if r["avg_field_size"] < 12 or r["n_heavy"] >= 3]
+    buy_weeks  = [r for r in rows if r not in skip_any]
+    tgt_buy    = [r for r in buy_weeks if r["zone"] == "target"]
+
+    print(f"  【スキップ条件1】平均出走頭数 < 12頭")
+    s1 = [r for r in skip_small if r["zone"] == "target"]
+    print(f"    該当: {len(skip_small)}回  ターゲット率: {len(s1)/len(skip_small)*100:.1f}%  ← 低いのでスキップ")
+
+    print(f"  【スキップ条件2】重・不良馬場 3レース以上")
+    s2 = [r for r in skip_heavy if r["zone"] == "target"]
+    if skip_heavy:
+        print(f"    該当: {len(skip_heavy)}回  ターゲット率: {len(s2)/len(skip_heavy)*100:.1f}%  ← 低いのでスキップ")
+
+    print(f"\n  ▶ どちらかに該当 → スキップ: {len(skip_any)}回 / {n}回")
+    print(f"  ▶ 購入する週: {len(buy_weeks)}回 / {n}回（{len(buy_weeks)/n*100:.1f}%）")
+    print(f"    ターゲット率: {len(tgt_buy)/len(buy_weeks)*100:.1f}%  （全体平均: {len(target)/n*100:.1f}%）")
+    avg_pay_buy = int(sum(r["payout"] for r in tgt_buy) / len(tgt_buy)) if tgt_buy else 0
+    print(f"    的中時平均払戻: {avg_pay_buy:,}円")
+
+    # ── 期待値比較 ──
+    print(f"\n■ 期待値比較（1回50,400円投資として）")
+    cost = 50_400
+    for label, grp in [("全週購入", rows), ("フィルタ後購入", buy_weeks)]:
+        tgt_g = [r for r in grp if r["zone"] == "target"]
+        if not grp:
+            continue
+        hit_rate = len(tgt_g) / len(grp)
+        avg_pay  = sum(r["payout"] for r in tgt_g) / len(tgt_g) if tgt_g else 0
+        ev = hit_rate * avg_pay - cost
+        roi = hit_rate * avg_pay / cost * 100
+        print(f"  {label}: 的中率{hit_rate*100:.1f}%  期待値{ev:+,.0f}円/回  回収率{roi:.1f}%")
+
+    # ── 今週判断フロー ──
+    print(f"\n■ 毎週の購入判断フロー")
+    print(f"  1. 5レースの出走頭数を確認 → 平均12頭未満ならスキップ")
+    print(f"  2. 馬場状態を確認 → 重・不良が3レース以上ならスキップ")
+    print(f"  3. 上記以外 → 購入（5万円〜8万円でターゲットゾーンを広くカバー）")
 
 
 def main():
