@@ -137,12 +137,12 @@ def debug_odds(race_id):
     from collectors.netkeiba import _get
     api_url = f"https://race.netkeiba.com/api/api_get_jra_odds.html?race_id={race_id}&type=1&action=update"
     try:
+        import json
         resp = _get(api_url)
-        ct = resp.headers.get("content-type", "")
-        body = resp.text[:3000]
-        return f"<b>URL:</b> {api_url}<br><b>Content-Type:</b> {ct}<br><b>Body:</b><pre>{body}</pre>"
+        data = resp.json()
+        return f"<b>URL:</b> {api_url}<br><pre>{json.dumps(data, ensure_ascii=False, indent=2)[:5000]}</pre>"
     except Exception as e:
-        return f"エラー: {e}"
+        return f"エラー: {e}<br><pre>{resp.text[:2000] if 'resp' in dir() else ''}</pre>"
 
 
 @app.route("/")
