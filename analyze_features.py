@@ -165,18 +165,12 @@ def report(rows):
     avg_pay_buy = int(sum(r["payout"] for r in tgt_buy) / len(tgt_buy)) if tgt_buy else 0
     print(f"    的中時平均払戻: {avg_pay_buy:,}円")
 
-    # ── 期待値比較 ──
-    print(f"\n■ 期待値比較（1回50,400円投資として）")
-    cost = 50_400
-    for label, grp in [("全週購入", rows), ("フィルタ後購入", buy_weeks)]:
-        tgt_g = [r for r in grp if r["zone"] == "target"]
-        if not grp:
-            continue
-        hit_rate = len(tgt_g) / len(grp)
-        avg_pay  = sum(r["payout"] for r in tgt_g) / len(tgt_g) if tgt_g else 0
-        ev = hit_rate * avg_pay - cost
-        roi = hit_rate * avg_pay / cost * 100
-        print(f"  {label}: 的中率{hit_rate*100:.1f}%  期待値{ev:+,.0f}円/回  回収率{roi:.1f}%")
+    # ── ゾーン率の意味 ──
+    print(f"\n■ 注意：ターゲット率の意味")
+    print(f"  {len(target)/n*100:.1f}% = 「人気の和が15〜22になる確率」")
+    print(f"  ≠ 「私たちの買い目が当たる確率」")
+    print(f"  実際の的中率は買い目504通り / 全組み合わせ数 × ゾーン率 ≈ 0.数%程度")
+    print(f"  正確な的中率・回収率は backtest.py で計測してください")
 
     # ── 今週判断フロー ──
     print(f"\n■ 毎週の購入判断フロー")
