@@ -174,7 +174,13 @@ def generate():
 
     sets = generate_pure_zone_sets(slots_odds, budget)
     if not sets:
-        return jsonify({"error": "買い目を生成できませんでした（オッズ取得失敗の可能性）"}), 500
+        empty_slots = [i+1 for i, o in enumerate(slots_odds) if not o]
+        msg = "買い目を生成できませんでした"
+        if empty_slots:
+            msg += f"（slot{empty_slots} のオッズ取得失敗）"
+        else:
+            msg += "（オッズデータが不完全）"
+        return jsonify({"error": msg}), 500
 
     total_combos = sum(s["combos"] for s in sets)
     total_cost = total_combos * 100

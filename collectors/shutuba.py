@@ -12,9 +12,7 @@ from bs4 import BeautifulSoup
 def fetch_odds(race_id: str) -> list[dict]:
     """
     単勝オッズページから馬番・馬名・オッズを取得し人気順に並べる。
-    レース終了済み（オッズ=---.-）の場合はDBの結果から取得するフォールバック付き。
-
-    返り値: [{"horse_number": N, "horse_name": "xxx", "odds": X, "popularity": N}, ...]
+    フォールバック順: オッズページ → 出馬表ページ → DB
     """
     url = f"https://race.netkeiba.com/odds/index.html?race_id={race_id}&type=b1"
     resp = _get(url)
@@ -27,30 +25,74 @@ def fetch_odds(race_id: str) -> list[dict]:
             cells = row.find_all("td")
             if len(cells) < 6:
                 continue
-            # 枠(0) | 馬番(1) | 印(2) | 選択(3) | 馬名(4) | オッズ(5)
             horse_number = _parse_int(cells[1].get_text())
             if horse_number is None:
                 continue
             horse_name = cells[4].get_text(strip=True)
             odds_text  = cells[5].get_text(strip=True)
-            odds       = _parse_float(odds_text)  # ---.- の場合は None
+            odds       = _parse_float(odds_text)
             horses.append({
                 "horse_number": horse_number,
                 "horse_name":   horse_name,
                 "odds":         odds,
             })
 
-    # オッズが全てNone（レース終了済み）→ DBから人気を取得
+    # テーブルが見つからなかった場合 → 出馬表ページで再試行
+    if not horses:
+        horses = _fetch_from_shutuba(race_id)
+
     valid_odds = [h for h in horses if h["odds"] is not None]
     if not valid_odds and horses:
         horses = _fallback_from_db(race_id, horses)
     else:
-        # オッズ順にソートして人気を付与
         horses.sort(key=lambda x: (x["odds"] is None, x["odds"] or 9999))
         for i, h in enumerate(horses):
             h["popularity"] = i + 1
 
     return horses
+
+
+def _fetch_from_shutuba(race_id: str) -> list[dict]:
+    """出馬表ページからオッズ付き馬リストを取得するフォールバック"""
+    try:
+        url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
+        resp = _get(url)
+        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+
+        horses = []
+        # 出馬表テーブル: Shutuba_Table
+        table = soup.find("table", class_=re.compile(r"Shutuba_Table|ShutubaTable"))
+        if table is None:
+            return []
+
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 4:
+                continue
+            horse_number = _parse_int(cells[1].get_text())
+            if horse_number is None:
+                continue
+            horse_name = cells[3].get_text(strip=True)
+            # 単勝オッズは列位置が可変 — 数値らしいセルを探す
+            odds = None
+            for c in cells[5:]:
+                v = _parse_float(c.get_text())
+                if v and v > 1.0:
+                    odds = v
+                    break
+            horses.append({
+                "horse_number": horse_number,
+                "horse_name":   horse_name,
+                "odds":         odds,
+            })
+
+        if horses:
+            horses.sort(key=lambda x: (x["odds"] is None, x["odds"] or 9999))
+            for i, h in enumerate(horses):
+                h["popularity"] = i + 1
+        return horses
+    except Exception:
+        return []
 
 
 def _fallback_from_db(race_id: str, horses: list[dict]) -> list[dict]:
