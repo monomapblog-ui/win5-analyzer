@@ -29,13 +29,27 @@ def fetch_odds(race_id: str) -> list[dict]:
             if horse_number is None:
                 continue
             horse_name = cells[4].get_text(strip=True) if len(cells) > 4 else ""
-            # オッズはカラム位置が変わることがあるため全セルを検索
+            # オッズを探す: まず専用spanタグ、次に全セルのテキストを検索
             odds = None
             for c in cells[5:]:
-                v = _parse_float(c.get_text())
-                if v is not None and v >= 1.0:
+                # netkeiba は <span class="Odds"> や <span id="odds_..."> にオッズを入れることがある
+                span = c.find("span", class_=re.compile(r"[Oo]dds|RaceOdds")) or c.find("span", id=re.compile(r"odds"))
+                text = span.get_text(strip=True) if span else c.get_text(strip=True)
+                v = _parse_float(text)
+                if v is not None and 1.0 <= v < 1000.0:
                     odds = v
                     break
+            # spanで見つからなければ全セルから数値パターンを探す（列位置不明の場合）
+            if odds is None:
+                for c in cells[2:]:
+                    text = c.get_text(strip=True)
+                    # "3.7" or "12.5" の形式（馬番・枠番の整数と区別するため小数点必須）
+                    m = re.search(r'\b(\d{1,3}\.\d)\b', text)
+                    if m:
+                        v = float(m.group(1))
+                        if 1.0 <= v < 1000.0:
+                            odds = v
+                            break
             horses.append({
                 "horse_number": horse_number,
                 "horse_name":   horse_name,
