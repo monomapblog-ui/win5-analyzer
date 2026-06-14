@@ -376,22 +376,36 @@
           </div>
         </div>`).join('');
       // コンパクト表示を生成
-      document.getElementById('compact-body').innerHTML = data.tickets.map(t => {
-        const cells = t.slots.map(s => `<td style="padding:5px 10px;color:#e8e8e8;font-size:0.85rem;font-family:monospace;">${s.numbers.join('・')}番</td>`).join('');
-        return `<tr>
-          <td style="padding:5px 10px;color:#ffd700;font-weight:bold;font-size:0.85rem;white-space:nowrap;">T${t.ticket_no}</td>
-          ${cells}
-          <td style="padding:5px 10px;color:#6a88aa;font-size:0.75rem;">${t.combos}通り</td>
-        </tr>`;
+      // ① レース別 全チケット共通の応援馬番（ユニオン）
+      const raceUnion = data.races.map((r, ri) => {
+        const allNums = new Set();
+        data.tickets.forEach(t => t.slots[ri].numbers.forEach(n => allNums.add(n)));
+        const sorted = [...allNums].sort((a,b)=>a-b);
+        return `<div style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid #1e3050;">
+          <span style="min-width:130px;font-size:0.75rem;color:#8ba3c0;flex-shrink:0;">R${r.slot} ${r.name}</span>
+          <span style="font-size:1.1rem;font-weight:bold;color:#ffd700;letter-spacing:.05em;">${sorted.join('・')}番</span>
+        </div>`;
       }).join('');
-      // ヘッダー行を先頭に
-      const hdr = `<tr style="border-bottom:1px solid #2a3d55;">
-        <td style="padding:5px 10px;color:#4a6a8a;font-size:0.75rem;"></td>
-        ${data.races.map(r=>`<td style="padding:5px 10px;color:#4a6a8a;font-size:0.75rem;">R${r.slot} ${r.name}</td>`).join('')}
-        <td></td>
-      </tr>`;
+
+      // ② チケット別一覧（横並び簡易）
+      const ticketRows = data.tickets.map(t => {
+        const slots = t.slots.map(s => `<span style="margin-right:12px;white-space:nowrap;"><span style="color:#6a88aa;font-size:0.7rem;">R${s.slot}▶</span><span style="color:#e8e8e8;font-size:0.85rem;">${s.numbers.join('・')}番</span></span>`).join('');
+        return `<div style="padding:7px 0;border-bottom:1px solid #1a2a3a;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
+          <span style="color:#ffd700;font-weight:bold;font-size:0.85rem;min-width:28px;">T${t.ticket_no}</span>
+          ${slots}
+          <span style="color:#4a6a8a;font-size:0.75rem;margin-left:auto;">${t.combos}通り</span>
+        </div>`;
+      }).join('');
+
       document.getElementById('compact-body').innerHTML =
-        `<table style="border-collapse:collapse;width:100%;">${hdr}${document.getElementById('compact-body').innerHTML}</table>`;
+        `<div style="margin-bottom:16px;">
+           <div style="font-size:0.7rem;color:#4a6a8a;margin-bottom:6px;letter-spacing:.05em;">▼ レース別 応援馬番（全チケット共通）</div>
+           ${raceUnion}
+         </div>
+         <div>
+           <div style="font-size:0.7rem;color:#4a6a8a;margin-bottom:6px;letter-spacing:.05em;">▼ チケット別 買い目</div>
+           ${ticketRows}
+         </div>`;
 
       document.getElementById('result').style.display = 'block';
     }
