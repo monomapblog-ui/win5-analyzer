@@ -199,6 +199,38 @@ def check_week():
     })
 
 
+@app.route("/api/horses", methods=["POST"])
+def get_horses():
+    """5レース分の馬リストを返す（馬選択UI用）"""
+    data = request.get_json()
+    date_str = data.get("date", "").strip()
+    if not date_str:
+        date_str = _latest_win5_date()
+
+    slots_info, slots_odds, err = _fetch_slots(date_str)
+    if err:
+        return jsonify({"error": err}), 404
+
+    result = []
+    for slot, odds in zip(slots_info, slots_odds):
+        horses = sorted([
+            {
+                "horse_number": h["horse_number"],
+                "horse_name":   h.get("horse_name", ""),
+                "popularity":   h.get("popularity"),
+                "odds":         h.get("odds"),
+            }
+            for h in odds
+        ], key=lambda x: x["horse_number"])
+        result.append({
+            "slot_number": slot["slot_number"],
+            "name":        slot["name"],
+            "horses":      horses,
+        })
+
+    return jsonify({"date": date_str, "slots": result})
+
+
 @app.route("/api/generate", methods=["POST"])
 def generate():
     data = request.get_json()
@@ -215,6 +247,16 @@ def generate():
     slots_info, slots_odds, err = _fetch_slots(date_str)
     if err:
         return jsonify({"error": err}), 404
+
+    # 除外馬の適用（UI で外したチェックボックス）
+    excluded = data.get("excluded", {})
+    if excluded:
+        for i, odds in enumerate(slots_odds):
+            slot_key = str(i + 1)
+            ex_nums = set(excluded.get(slot_key, []))
+            if ex_nums:
+                slots_odds[i] = [h for h in odds if h["horse_number"] not in ex_nums]
+                print(f"[INFO] slot{i+1} 除外馬番: {sorted(ex_nums)} → 残り{len(slots_odds[i])}頭")
 
     # デバッグ: 各スロットのpopularity付き馬数を確認
     for i, odds in enumerate(slots_odds):

@@ -184,7 +184,8 @@
           <input type="number" id="budget-input" value="50000" step="1000" min="1000">
         </div>
         <button class="btn btn-check" id="check-btn" onclick="checkWeek()">① 今週の判定</button>
-        <button class="btn btn-generate" id="gen-btn" onclick="generate()">② 買い目を生成</button>
+        <button class="btn" id="select-btn" onclick="loadHorses()" style="background:#1a3a5a;border:1px solid #2a5298;color:#8ba3c0;">② 馬を選択</button>
+        <button class="btn btn-generate" id="gen-btn" onclick="generate()">③ 買い目を生成</button>
       </div>
       <div class="budget-presets">
         <span style="font-size:0.75rem;color:#8ba3c0;align-self:center;">予算:</span>
@@ -193,6 +194,18 @@
         <button class="preset-btn" onclick="setPreset(80000)">8万円</button>
         <button class="preset-btn" onclick="setPreset(100000)">10万円</button>
       </div>
+    </div>
+
+    <!-- 馬選択パネル -->
+    <div id="horse-panel" style="display:none;background:#1a2535;border:1px solid #2a3d55;border-radius:12px;padding:20px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <span style="font-size:0.9rem;color:#ffd700;font-weight:bold;">除外する馬のチェックを外してください</span>
+        <div style="display:flex;gap:8px;">
+          <button onclick="checkAllHorses(true)" style="background:#1a3a2a;border:1px solid #2a5;color:#2ecc71;padding:4px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">全選択</button>
+          <button onclick="checkAllHorses(false)" style="background:#3a1a1a;border:1px solid #a52;color:#e74c3c;padding:4px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">全解除</button>
+        </div>
+      </div>
+      <div id="horse-list"></div>
     </div>
 
     <!-- 週判定結果 -->
@@ -299,6 +312,72 @@
       card.style.display = 'block';
     }
 
+    async function loadHorses() {
+      const btn = document.getElementById('select-btn');
+      btn.disabled = true;
+      btn.textContent = '取得中…';
+      try {
+        const res = await fetch('/api/horses', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({date: getDateVal()}),
+        });
+        const data = await res.json();
+        if (!res.ok) { alert('エラー: ' + (data.error || res.statusText)); return; }
+        renderHorsePanel(data);
+        document.getElementById('horse-panel').style.display = 'block';
+      } catch (e) {
+        alert('通信エラー: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '② 馬を選択';
+      }
+    }
+
+    function renderHorsePanel(data) {
+      document.getElementById('horse-list').innerHTML = data.slots.map(slot => `
+        <div style="margin-bottom:16px;">
+          <div style="font-size:0.8rem;color:#8ba3c0;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #1e3050;">
+            R${slot.slot_number} ${slot.name}
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            ${slot.horses.map(h => `
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:#0f1923;border:1px solid #2a3d55;border-radius:6px;padding:5px 10px;min-width:90px;">
+                <input type="checkbox" class="horse-cb" data-slot="${slot.slot_number}" data-num="${h.horse_number}" checked
+                  style="width:14px;height:14px;cursor:pointer;" onchange="updateLabel(this)">
+                <span class="horse-label" style="font-size:0.85rem;">
+                  <span style="color:#ffd700;font-weight:bold;">${h.horse_number}番</span>
+                  <span style="color:#6a88aa;font-size:0.75rem;">${h.popularity}人気</span>
+                  <span style="color:#e8e8e8;font-size:0.8rem;">${h.horse_name}</span>
+                </span>
+              </label>`).join('')}
+          </div>
+        </div>`).join('');
+    }
+
+    function updateLabel(cb) {
+      const label = cb.closest('label');
+      label.style.opacity = cb.checked ? '1' : '0.35';
+      label.style.borderColor = cb.checked ? '#2a3d55' : '#5a2a2a';
+    }
+
+    function checkAllHorses(checked) {
+      document.querySelectorAll('.horse-cb').forEach(cb => {
+        cb.checked = checked;
+        updateLabel(cb);
+      });
+    }
+
+    function getExcluded() {
+      const excluded = {};
+      document.querySelectorAll('.horse-cb:not(:checked)').forEach(cb => {
+        const slot = cb.dataset.slot;
+        if (!excluded[slot]) excluded[slot] = [];
+        excluded[slot].push(parseInt(cb.dataset.num));
+      });
+      return excluded;
+    }
+
     async function generate() {
       const btn = document.getElementById('gen-btn');
       const budget = parseInt(document.getElementById('budget-input').value);
@@ -314,7 +393,7 @@
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({budget, date: getDateVal()}),
+          body: JSON.stringify({budget, date: getDateVal(), excluded: getExcluded()}),
         });
         const data = await res.json();
         if (!res.ok) { setStatus('エラー: ' + (data.error || res.statusText), 'error'); return; }
