@@ -208,12 +208,20 @@
 
     <!-- 結果 -->
     <div id="result">
-      <div class="zone-note">
-        <strong>✔ 低ゾーン 0 通り保証</strong>
-        — 全チケット・全組み合わせが人気の和 <strong>15〜22</strong> に収まります
+      <div class="zone-note" style="display:flex;justify-content:space-between;align-items:center;">
+        <span><strong>✔ 低ゾーン 0 通り保証</strong> — 全組み合わせが人気の和 <strong>15〜22</strong></span>
+        <button onclick="toggleView()" id="view-btn" style="background:#1a2535;border:1px solid #2a5298;color:#8ba3c0;padding:5px 14px;border-radius:6px;font-size:0.8rem;cursor:pointer;">コンパクト表示</button>
       </div>
       <div class="summary-bar" id="summary"></div>
       <div class="races-bar" id="races-bar"></div>
+
+      <!-- コンパクト表示 -->
+      <div id="compact" style="display:none;background:#1a2535;border:1px solid #2a3d55;border-radius:12px;padding:20px;margin-bottom:16px;">
+        <div style="font-size:0.75rem;color:#8ba3c0;margin-bottom:12px;letter-spacing:.05em;">IPAT 入力まとめ</div>
+        <div id="compact-body"></div>
+      </div>
+
+      <!-- 詳細表示 -->
       <div id="tickets"></div>
     </div>
   </div>
@@ -366,7 +374,33 @@
             </div>
           </div>
         </div>`).join('');
+      // コンパクト表示を生成
+      document.getElementById('compact-body').innerHTML = data.tickets.map(t => {
+        const cells = t.slots.map(s => `<td style="padding:5px 10px;color:#e8e8e8;font-size:0.85rem;font-family:monospace;">${s.numbers.join('・')}番</td>`).join('');
+        return `<tr>
+          <td style="padding:5px 10px;color:#ffd700;font-weight:bold;font-size:0.85rem;white-space:nowrap;">T${t.ticket_no}</td>
+          ${cells}
+          <td style="padding:5px 10px;color:#6a88aa;font-size:0.75rem;">${t.combos}通り</td>
+        </tr>`;
+      }).join('');
+      // ヘッダー行を先頭に
+      const hdr = `<tr style="border-bottom:1px solid #2a3d55;">
+        <td style="padding:5px 10px;color:#4a6a8a;font-size:0.75rem;"></td>
+        ${data.races.map(r=>`<td style="padding:5px 10px;color:#4a6a8a;font-size:0.75rem;">R${r.slot} ${r.name}</td>`).join('')}
+        <td></td>
+      </tr>`;
+      document.getElementById('compact-body').innerHTML =
+        `<table style="border-collapse:collapse;width:100%;">${hdr}${document.getElementById('compact-body').innerHTML}</table>`;
+
       document.getElementById('result').style.display = 'block';
+    }
+
+    let compactMode = false;
+    function toggleView() {
+      compactMode = !compactMode;
+      document.getElementById('compact').style.display  = compactMode ? 'block' : 'none';
+      document.getElementById('tickets').style.display  = compactMode ? 'none'  : 'block';
+      document.getElementById('view-btn').textContent   = compactMode ? '詳細表示' : 'コンパクト表示';
     }
 
     document.addEventListener('keydown', e => { if (e.key === 'Enter') checkWeek(); });
