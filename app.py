@@ -172,6 +172,11 @@ def generate():
     if err:
         return jsonify({"error": err}), 404
 
+    # デバッグ: 各スロットのpopularity付き馬数を確認
+    for i, odds in enumerate(slots_odds):
+        with_pop = [h for h in odds if h.get("popularity")]
+        print(f"[DEBUG] slot{i+1}: {len(odds)}頭 / popularity付き{len(with_pop)}頭  例:{odds[:2] if odds else []}")
+
     sets = generate_pure_zone_sets(slots_odds, budget)
     if not sets:
         empty_slots = [i+1 for i, o in enumerate(slots_odds) if not o]
