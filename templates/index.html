@@ -355,13 +355,14 @@
                     <td class="slot-num">R${s.slot}</td>
                     <td class="race-name">${s.race_name}</td>
                     <td class="pop-range">${s.popularity_range}</td>
-                    <td><div class="horse-list">
-                      ${[...s.horses].sort((a,b)=>a.number-b.number).map(h => `
-                        <div class="horse-chip">
-                          <span class="num">${h.number}</span>${h.name}
-                          <span class="pop">${h.popularity}人気</span>
-                        </div>`).join('')}
-                    </div></td>
+                    <td>
+                      <div style="font-size:1rem;font-weight:bold;color:#ffd700;letter-spacing:.05em;">
+                        ${s.numbers.join(' ・ ')}番
+                      </div>
+                      <div style="font-size:0.75rem;color:#6a88aa;margin-top:3px;">
+                        ${[...s.horses].sort((a,b)=>a.number-b.number).map(h=>`${h.number}番=${h.popularity}人気`).join('　')}
+                      </div>
+                    </td>
                   </tr>`).join('')}
               </tbody>
             </table>
