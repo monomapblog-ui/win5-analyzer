@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WIN5 買い目シート</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:'Noto Sans JP','Hiragino Kaku Gothic Pro',sans-serif;
+    background:#060d1f;
+    color:#fff;
+    min-height:100vh;
+    padding:0;
+  }
+
+  /* ══ ヘッダー ══ */
+  .hero{
+    background:linear-gradient(160deg,#0a1830 0%,#0d2a5a 40%,#0a1830 100%);
+    border-bottom:3px solid #c8a100;
+    padding:40px 48px 32px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero::before{
+    content:'WIN5';
+    position:absolute;
+    right:-20px;top:-30px;
+    font-size:260px;font-weight:900;
+    color:rgba(255,215,0,.04);
+    letter-spacing:-10px;
+    pointer-events:none;
+  }
+  .hero-date{
+    font-size:14px;letter-spacing:.2em;color:#a0b8d8;text-transform:uppercase;
+    margin-bottom:8px;
+  }
+  .hero-title{
+    font-size:52px;font-weight:900;
+    background:linear-gradient(90deg,#ffd700,#fff8d0,#ffd700);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    line-height:1.1;
+    letter-spacing:2px;
+  }
+  .hero-sub{font-size:16px;color:#8ba8cc;margin-top:6px;}
+  .hero-stats{
+    display:flex;gap:48px;margin-top:28px;align-items:flex-end;
+  }
+  .stat{display:flex;flex-direction:column;gap:2px;}
+  .stat-num{font-size:44px;font-weight:900;color:#ffd700;line-height:1;}
+  .stat-unit{font-size:14px;color:#ffd700;margin-left:2px;}
+  .stat-label{font-size:11px;color:#6a88aa;letter-spacing:.1em;margin-top:4px;}
+  .hero-badges{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;}
+  .hbadge{
+    border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;letter-spacing:.05em;
+  }
+  .hbadge-gold{background:#c8a100;color:#000;}
+  .hbadge-green{background:#0e6b3a;border:1px solid #27ae60;color:#4ddb94;}
+  .hbadge-blue{background:#0a2a5a;border:1px solid #2a5298;color:#7ab0ff;}
+
+  /* ══ レース帯 ══ */
+  .races-strip{
+    display:grid;grid-template-columns:repeat(5,1fr);
+    background:#03080f;
+    border-bottom:2px solid #1a2d4a;
+  }
+  .race-cell{
+    padding:14px 18px;
+    border-right:1px solid #1a2d4a;
+  }
+  .race-cell:last-child{border-right:none;}
+  .race-slot{font-size:10px;color:#6a88aa;letter-spacing:.1em;margin-bottom:4px;}
+  .race-name{font-size:13px;font-weight:700;color:#c8daf0;}
+  .race-venue{font-size:11px;color:#4a6a8a;margin-top:2px;}
+  .race-cell.gi{
+    background:linear-gradient(135deg,#1a1000,#2a1a00);
+    border-top:2px solid #c8a100;
+  }
+  .race-cell.gi .race-name{color:#ffd700;}
+  .gi-badge{
+    display:inline-block;background:#c8a100;color:#000;
+    font-size:9px;font-weight:900;padding:1px 6px;border-radius:3px;margin-top:4px;
+  }
+
+  /* ══ チケットグリッド ══ */
+  .section{padding:28px 48px 40px;}
+  .section-title{
+    font-size:11px;letter-spacing:.2em;color:#4a6a8a;text-transform:uppercase;
+    margin-bottom:20px;padding-bottom:8px;border-bottom:1px solid #1a2d4a;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+  }
+  @media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr);}}
+
+  .card{
+    background:linear-gradient(160deg,#0d1a2e,#101e35);
+    border:1px solid #1e3050;
+    border-radius:14px;
+    overflow:hidden;
+    position:relative;
+  }
+  .card::after{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,#c8a100,transparent);
+  }
+  .card-head{
+    padding:12px 16px 10px;
+    background:rgba(0,0,0,.3);
+    display:flex;justify-content:space-between;align-items:center;
+    border-bottom:1px solid #1a2d4a;
+  }
+  .tno{font-size:22px;font-weight:900;color:#ffd700;}
+  .tcost{font-size:12px;color:#6a88aa;}
+  .tcost b{color:#a0c0e0;font-size:14px;}
+  .card-body{padding:12px 16px;}
+
+  .slot-row{
+    display:flex;align-items:center;gap:10px;
+    padding:6px 0;
+    border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .slot-row:last-child{border-bottom:none;}
+  .slot-label{
+    font-size:10px;font-weight:700;color:#4a6a8a;
+    width:24px;flex-shrink:0;
+  }
+  .slot-race{font-size:10px;color:#6a88aa;flex:1;white-space:nowrap;overflow:hidden;}
+  .pop-bar{
+    display:flex;gap:3px;align-items:center;
+  }
+  .pip{
+    width:18px;height:18px;border-radius:4px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:9px;font-weight:700;
+  }
+  .pip-hot{background:#c8a100;color:#000;}
+  .pip-mid{background:#1e3a6a;color:#7ab0ff;border:1px solid #2a5298;}
+  .pip-cool{background:#0e1e38;color:#4a7aa8;border:1px solid #1a3060;}
+
+  .card-foot{
+    padding:8px 16px;
+    background:rgba(0,0,0,.25);
+    border-top:1px solid #1a2d4a;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .sum-range{font-size:10px;color:#4a6a8a;}
+  .sum-val{font-size:11px;font-weight:700;color:#27ae60;}
+
+  /* T7 だけ少し大きく（残り1枚感） */
+  .card-last{grid-column:span 1;}
+
+  /* ══ フッター ══ */
+  .footer-bar{
+    background:#03080f;
+    border-top:2px solid #c8a100;
+    padding:20px 48px;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .footer-total{font-size:13px;color:#6a88aa;}
+  .footer-total b{font-size:28px;color:#ffd700;margin:0 4px;}
+  .footer-note{font-size:11px;color:#3a5a7a;text-align:right;line-height:1.6;}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-date">2026年06月14日（日）　WIN5 BETTING SHEET</div>
+  <div class="hero-title">買い目シート</div>
+  <div class="hero-sub">ターゲットゾーン集中攻略 ／ 全組み合わせ 人気の和 15〜22</div>
+  <div class="hero-stats">
+    <div class="stat">
+      <div><span class="stat-num">7</span><span class="stat-unit">枚</span></div>
+      <div class="stat-label">TICKETS</div>
+    </div>
+    <div class="stat">
+      <div><span class="stat-num">504</span><span class="stat-unit">通り</span></div>
+      <div class="stat-label">COMBINATIONS</div>
+    </div>
+    <div class="stat">
+      <div><span class="stat-num">50,400</span><span class="stat-unit">円</span></div>
+      <div class="stat-label">TOTAL INVESTMENT</div>
+    </div>
+  </div>
+  <div class="hero-badges">
+    <span class="hbadge hbadge-gold">人気の和 15〜22 保証</span>
+    <span class="hbadge hbadge-green">低ゾーン 0 通り</span>
+    <span class="hbadge hbadge-blue">各チケット 72通り × 7,200円</span>
+  </div>
+</div>
+
+<!-- RACES -->
+<div class="races-strip">
+  <div class="race-cell">
+    <div class="race-slot">R1 ／ 東京10R</div>
+    <div class="race-name">江の島S</div>
+    <div class="race-venue">東京競馬場</div>
+  </div>
+  <div class="race-cell">
+    <div class="race-slot">R2 ／ 阪神10R</div>
+    <div class="race-name">花のみちS</div>
+    <div class="race-venue">阪神競馬場</div>
+  </div>
+  <div class="race-cell">
+    <div class="race-slot">R3 ／ 函館11R</div>
+    <div class="race-name">函館日刊スポーツ杯</div>
+    <div class="race-venue">函館競馬場</div>
+  </div>
+  <div class="race-cell">
+    <div class="race-slot">R4 ／ 東京11R</div>
+    <div class="race-name">パラダイスS</div>
+    <div class="race-venue">東京競馬場</div>
+  </div>
+  <div class="race-cell gi">
+    <div class="race-slot">R5 ／ 阪神11R</div>
+    <div class="race-name">宝塚記念</div>
+    <div class="race-venue">阪神競馬場</div>
+    <div><span class="gi-badge">GⅠ</span></div>
+  </div>
+</div>
+
+<!-- TICKETS -->
+<div class="section">
+  <div class="section-title">チケット一覧 — IPAT 入力用</div>
+  <div class="grid">
+
+    <!-- T1 -->
+    <div class="card">
+      <div class="card-head">
+        <div class="tno">T1</div>
+        <div class="tcost">72通り <b>7,200円</b></div>
+      </div>
+      <div class="card-body">
+        <div class="slot-row">
+          <div class="slot-label">R1</div>
+          <div class="slot-race">江の島S</div>
+          <div class="pop-bar">
+            <div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div>
+          </div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R2</div>
+          <div class="slot-race">花のみちS</div>
+          <div class="pop-bar">
+            <div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div>
+          </div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R3</div>
+          <div class="slot-race">函館日刊S杯</div>
+          <div class="pop-bar">
+            <div class="pip pip-hot">1</div><div class="pip pip-hot">2</div>
+          </div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R4</div>
+          <div class="slot-race">パラダイスS</div>
+          <div class="pop-bar">
+            <div class="pip pip-cool">6</div><div class="pip pip-cool">7</div>
+          </div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R5</div>
+          <div class="slot-race">宝塚記念 GⅠ</div>
+          <div class="pop-bar">
+            <div class="pip pip-cool">6</div><div class="pip pip-cool">7</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div class="sum-range">和の範囲</div>
+        <div class="sum-val">15 〜 22</div>
+      </div>
+    </div>
+
+    <!-- T2 -->
+    <div class="card">
+      <div class="card-head">
+        <div class="tno">T2</div>
+        <div class="tcost">72通り <b>7,200円</b></div>
+      </div>
+      <div class="card-body">
+        <div class="slot-row">
+          <div class="slot-label">R1</div><div class="slot-race">江の島S</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R2</div><div class="slot-race">花のみちS</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R3</div><div class="slot-race">函館日刊S杯</div>
+          <div class="pop-bar"><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R4</div><div class="slot-race">パラダイスS</div>
+          <div class="pop-bar"><div class="pip pip-mid">5</div><div class="pip pip-cool">6</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R5</div><div class="slot-race">宝塚記念 GⅠ</div>
+          <div class="pop-bar"><div class="pip pip-cool">6</div><div class="pip pip-cool">7</div></div>
+        </div>
+      </div>
+      <div class="card-foot"><div class="sum-range">和の範囲</div><div class="sum-val">15 〜 22</div></div>
+    </div>
+
+    <!-- T3 -->
+    <div class="card">
+      <div class="card-head">
+        <div class="tno">T3</div>
+        <div class="tcost">72通り <b>7,200円</b></div>
+      </div>
+      <div class="card-body">
+        <div class="slot-row">
+          <div class="slot-label">R1</div><div class="slot-race">江の島S</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R2</div><div class="slot-race">花のみちS</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R3</div><div class="slot-race">函館日刊S杯</div>
+          <div class="pop-bar"><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R4</div><div class="slot-race">パラダイスS</div>
+          <div class="pop-bar"><div class="pip pip-cool">6</div><div class="pip pip-cool">7</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R5</div><div class="slot-race">宝塚記念 GⅠ</div>
+          <div class="pop-bar"><div class="pip pip-mid">5</div><div class="pip pip-cool">6</div></div>
+        </div>
+      </div>
+      <div class="card-foot"><div class="sum-range">和の範囲</div><div class="sum-val">15 〜 22</div></div>
+    </div>
+
+    <!-- T4 -->
+    <div class="card">
+      <div class="card-head">
+        <div class="tno">T4</div>
+        <div class="tcost">72通り <b>7,200円</b></div>
+      </div>
+      <div class="card-body">
+        <div class="slot-row">
+          <div class="slot-label">R1</div><div class="slot-race">江の島S</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R2</div><div class="slot-race">花のみちS</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R3</div><div class="slot-race">函館日刊S杯</div>
+          <div class="pop-bar"><div class="pip pip-mid">3</div><div class="pip pip-mid">4</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R4</div><div class="slot-race">パラダイスS</div>
+          <div class="pop-bar"><div class="pip pip-mid">4</div><div class="pip pip-mid">5</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R5</div><div class="slot-race">宝塚記念 GⅠ</div>
+          <div class="pop-bar"><div class="pip pip-cool">6</div><div class="pip pip-cool">7</div></div>
+        </div>
+      </div>
+      <div class="card-foot"><div class="sum-range">和の範囲</div><div class="sum-val">15 〜 22</div></div>
+    </div>
+
+    <!-- T5 -->
+    <div class="card">
+      <div class="card-head">
+        <div class="tno">T5</div>
+        <div class="tcost">72通り <b>7,200円</b></div>
+      </div>
+      <div class="card-body">
+        <div class="slot-row">
+          <div class="slot-label">R1</div><div class="slot-race">江の島S</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R2</div><div class="slot-race">花のみちS</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R3</div><div class="slot-race">函館日刊S杯</div>
+          <div class="pop-bar"><div class="pip pip-mid">3</div><div class="pip pip-mid">4</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R4</div><div class="slot-race">パラダイスS</div>
+          <div class="pop-bar"><div class="pip pip-mid">5</div><div class="pip pip-cool">6</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R5</div><div class="slot-race">宝塚記念 GⅠ</div>
+          <div class="pop-bar"><div class="pip pip-mid">5</div><div class="pip pip-cool">6</div></div>
+        </div>
+      </div>
+      <div class="card-foot"><div class="sum-range">和の範囲</div><div class="sum-val">15 〜 22</div></div>
+    </div>
+
+    <!-- T6 -->
+    <div class="card">
+      <div class="card-head">
+        <div class="tno">T6</div>
+        <div class="tcost">72通り <b>7,200円</b></div>
+      </div>
+      <div class="card-body">
+        <div class="slot-row">
+          <div class="slot-label">R1</div><div class="slot-race">江の島S</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R2</div><div class="slot-race">花のみちS</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R3</div><div class="slot-race">函館日刊S杯</div>
+          <div class="pop-bar"><div class="pip pip-mid">3</div><div class="pip pip-mid">4</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R4</div><div class="slot-race">パラダイスS</div>
+          <div class="pop-bar"><div class="pip pip-cool">6</div><div class="pip pip-cool">7</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R5</div><div class="slot-race">宝塚記念 GⅠ</div>
+          <div class="pop-bar"><div class="pip pip-mid">4</div><div class="pip pip-mid">5</div></div>
+        </div>
+      </div>
+      <div class="card-foot"><div class="sum-range">和の範囲</div><div class="sum-val">15 〜 22</div></div>
+    </div>
+
+    <!-- T7 -->
+    <div class="card card-last">
+      <div class="card-head">
+        <div class="tno">T7</div>
+        <div class="tcost">72通り <b>7,200円</b></div>
+      </div>
+      <div class="card-body">
+        <div class="slot-row">
+          <div class="slot-label">R1</div><div class="slot-race">江の島S</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R2</div><div class="slot-race">花のみちS</div>
+          <div class="pop-bar"><div class="pip pip-hot">1</div><div class="pip pip-hot">2</div><div class="pip pip-hot">3</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R3</div><div class="slot-race">函館日刊S杯</div>
+          <div class="pop-bar"><div class="pip pip-mid">4</div><div class="pip pip-mid">5</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R4</div><div class="slot-race">パラダイスS</div>
+          <div class="pop-bar"><div class="pip pip-mid">3</div><div class="pip pip-mid">4</div></div>
+        </div>
+        <div class="slot-row">
+          <div class="slot-label">R5</div><div class="slot-race">宝塚記念 GⅠ</div>
+          <div class="pop-bar"><div class="pip pip-cool">6</div><div class="pip pip-cool">7</div></div>
+        </div>
+      </div>
+      <div class="card-foot"><div class="sum-range">和の範囲</div><div class="sum-val">15 〜 22</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer-bar">
+  <div class="footer-total">
+    合計投資額 <b>50,400</b>円 ／ 7チケット × 72通り = 504通り
+  </div>
+  <div class="footer-note">
+    全組み合わせ 人気の和 15〜22 保証<br>
+    低ゾーン（≤14）0通り ／ 高ゾーン（≥23）0通り
+  </div>
+</div>
+
+</body>
+</html>
