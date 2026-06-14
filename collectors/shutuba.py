@@ -23,14 +23,19 @@ def fetch_odds(race_id: str) -> list[dict]:
     if table:
         for row in table.find_all("tr"):
             cells = row.find_all("td")
-            if len(cells) < 6:
+            if len(cells) < 4:
                 continue
             horse_number = _parse_int(cells[1].get_text())
             if horse_number is None:
                 continue
-            horse_name = cells[4].get_text(strip=True)
-            odds_text  = cells[5].get_text(strip=True)
-            odds       = _parse_float(odds_text)
+            horse_name = cells[4].get_text(strip=True) if len(cells) > 4 else ""
+            # オッズはカラム位置が変わることがあるため全セルを検索
+            odds = None
+            for c in cells[5:]:
+                v = _parse_float(c.get_text())
+                if v is not None and v >= 1.0:
+                    odds = v
+                    break
             horses.append({
                 "horse_number": horse_number,
                 "horse_name":   horse_name,
@@ -42,12 +47,19 @@ def fetch_odds(race_id: str) -> list[dict]:
         horses = _fetch_from_shutuba(race_id)
 
     valid_odds = [h for h in horses if h["odds"] is not None]
-    if not valid_odds and horses:
-        horses = _fallback_from_db(race_id, horses)
-    else:
+    if valid_odds:
+        # オッズあり → ソートして人気付与
         horses.sort(key=lambda x: (x["odds"] is None, x["odds"] or 9999))
         for i, h in enumerate(horses):
             h["popularity"] = i + 1
+    elif horses:
+        # オッズなし（---.- = 発売前 or 終了済み）→ DBから取得
+        horses = _fallback_from_db(race_id, horses)
+        # DBにもない場合は馬番順に仮人気を付与
+        if not any(h.get("popularity") for h in horses):
+            horses.sort(key=lambda x: x["horse_number"])
+            for i, h in enumerate(horses):
+                h["popularity"] = i + 1
 
     return horses
 
