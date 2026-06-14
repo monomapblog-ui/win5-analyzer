@@ -356,7 +356,7 @@
                     <td class="race-name">${s.race_name}</td>
                     <td class="pop-range">${s.popularity_range}</td>
                     <td><div class="horse-list">
-                      ${s.horses.map(h => `
+                      ${[...s.horses].sort((a,b)=>a.number-b.number).map(h => `
                         <div class="horse-chip">
                           <span class="num">${h.number}</span>${h.name}
                           <span class="pop">${h.popularity}人気</span>
