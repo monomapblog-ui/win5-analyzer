@@ -101,6 +101,36 @@ def _fetch_slots(date_str: str):
     return slots_info, slots_odds, None
 
 
+@app.route("/debug/win5/<date_str>")
+def debug_win5(date_str):
+    """WIN5の5レース全オッズ取得状況を確認"""
+    from collectors.shutuba import fetch_odds
+    slots_info = get_win5_race_ids(date_str)
+    if not slots_info:
+        return f"{date_str} のWIN5データが見つかりません", 404
+
+    lines = [f"<h3>{date_str} WIN5 オッズ確認</h3>"]
+    for slot in slots_info:
+        race_id = slot.get("race_id", "")
+        name = slot.get("name", "")
+        lines.append(f"<h4>Slot{slot['slot_number']} {name} ({race_id})</h4>")
+        try:
+            horses = fetch_odds(race_id)
+            if horses:
+                rows = ["<table border=1><tr><th>馬番</th><th>馬名</th><th>オッズ</th><th>人気</th></tr>"]
+                for h in sorted(horses, key=lambda x: x["horse_number"]):
+                    rows.append(f"<tr><td>{h['horse_number']}</td><td>{h['horse_name']}</td>"
+                                f"<td>{h.get('odds','---')}</td><td>{h.get('popularity','?')}</td></tr>")
+                rows.append("</table>")
+                lines.append("".join(rows))
+            else:
+                lines.append("<p style='color:red'>馬データなし</p>")
+        except Exception as e:
+            lines.append(f"<p style='color:red'>エラー: {e}</p>")
+        time.sleep(0.3)
+    return "".join(lines)
+
+
 @app.route("/debug/odds/<race_id>")
 def debug_odds(race_id):
     """オッズページのセル構造を確認"""
