@@ -199,7 +199,7 @@ def generate():
                 "slot": j + 1,
                 "race_name": info["name"],
                 "popularity_range": f"{s['lo'][j]}〜{s['hi'][j]}番人気",
-                "horses": [
+                "horses": sorted([
                     {
                         "number": h["horse_number"],
                         "name": h["horse_name"],
@@ -207,7 +207,7 @@ def generate():
                         "odds": h.get("odds", "-"),
                     }
                     for h in horses
-                ],
+                ], key=lambda x: x["number"]),
                 "numbers": nums,
             })
         tickets.append({
