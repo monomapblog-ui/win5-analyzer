@@ -17,88 +17,66 @@ def fetch_odds(race_id: str) -> list[dict]:
     # ── 1. netkeibaオッズAPI（JavaScriptで読み込まれる実データ）──
     horses = _fetch_odds_from_api(race_id)
 
-    # ── 2. APIで取れなければ出馬表ページ ──
-    if not horses:
+    # ── 2. 出馬表で馬名を補完（APIに馬名が含まれないため）──
+    if horses:
+        shutuba = _fetch_from_shutuba(race_id)
+        name_map = {h["horse_number"]: h["horse_name"] for h in shutuba}
+        for h in horses:
+            if not h.get("horse_name"):
+                h["horse_name"] = name_map.get(h["horse_number"], "")
+    else:
+        # APIが失敗した場合は出馬表にフォールバック
         horses = _fetch_from_shutuba(race_id)
 
-    valid_odds = [h for h in horses if h["odds"] is not None]
-    if valid_odds:
-        horses.sort(key=lambda x: (x["odds"] is None, x["odds"] or 9999))
-        for i, h in enumerate(horses):
-            h["popularity"] = i + 1
-    elif horses:
-        horses = _fallback_from_db(race_id, horses)
-        if not any(h.get("popularity") for h in horses):
-            horses.sort(key=lambda x: x["horse_number"])
+    # 人気がAPIから取れている場合はそのまま使う
+    if any(h.get("popularity") for h in horses):
+        horses.sort(key=lambda x: (x.get("popularity") is None, x.get("popularity") or 999))
+    else:
+        valid_odds = [h for h in horses if h["odds"] is not None]
+        if valid_odds:
+            horses.sort(key=lambda x: (x["odds"] is None, x["odds"] or 9999))
             for i, h in enumerate(horses):
                 h["popularity"] = i + 1
+        elif horses:
+            horses = _fallback_from_db(race_id, horses)
+            if not any(h.get("popularity") for h in horses):
+                horses.sort(key=lambda x: x["horse_number"])
+                for i, h in enumerate(horses):
+                    h["popularity"] = i + 1
 
     return horses
 
 
 def _fetch_odds_from_api(race_id: str) -> list[dict]:
-    """netkeibaの単勝オッズAPIから取得する"""
-    import json
-    # netkeiba オッズAPI: type=1 が単勝
+    """netkeibaの単勝オッズAPIから取得する。
+    レスポンス形式: data.odds["1"]["01"] = ["3.7", "", "1"]
+      → [単勝オッズ, "", 人気順位]
+    """
     api_url = f"https://race.netkeiba.com/api/api_get_jra_odds.html?race_id={race_id}&type=1&action=update"
     try:
         resp = _get(api_url)
         data = resp.json()
-        # レスポンス形式: {"status": "OK", "data": {"odds": {"1": ["3.7", "馬名"], ...}}}
-        odds_data = data.get("data", {}).get("odds", {})
-        if not odds_data:
+        # 単勝は odds["1"]
+        tansho = data.get("data", {}).get("odds", {}).get("1", {})
+        if not tansho:
             return []
         horses = []
-        for horse_num_str, val in odds_data.items():
+        for horse_num_str, val in tansho.items():
             horse_number = _parse_int(horse_num_str)
             if horse_number is None:
                 continue
-            # val は [オッズ文字列, 馬名] or オッズ文字列のみのことがある
-            if isinstance(val, list) and len(val) >= 1:
-                odds_str = val[0]
-                horse_name = val[1] if len(val) > 1 else ""
-            else:
-                odds_str = str(val)
-                horse_name = ""
-            odds = _parse_float(odds_str)
+            # val = ["オッズ", "", "人気順位"]
+            odds       = _parse_float(val[0]) if len(val) > 0 else None
+            popularity = _parse_int(val[2])   if len(val) > 2 else None
             horses.append({
                 "horse_number": horse_number,
-                "horse_name":   horse_name,
+                "horse_name":   "",  # 馬名はAPIに含まれないため出馬表で補完
                 "odds":         odds,
+                "popularity":   popularity,
             })
         return horses
     except Exception as e:
         print(f"[WARN] オッズAPI取得失敗 {race_id}: {e}")
-
-    # APIがJSONでない場合、HTMLオッズページのスクリプトタグからも試みる
-    try:
-        url = f"https://race.netkeiba.com/odds/index.html?race_id={race_id}&type=b1"
-        resp = _get(url)
-        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
-        # JavaScriptの変数から直接抽出: odds = {"1":["3.7","馬名"], ...}
-        for script in soup.find_all("script"):
-            text = script.get_text()
-            m = re.search(r'var\s+OddsData\s*=\s*(\{.*?\})\s*;', text, re.DOTALL)
-            if not m:
-                m = re.search(r'"odds"\s*:\s*(\{[^}]+\})', text)
-            if m:
-                try:
-                    raw = json.loads(m.group(1))
-                    horses = []
-                    for k, v in raw.items():
-                        hn = _parse_int(k)
-                        if hn is None:
-                            continue
-                        odds_val = _parse_float(v[0]) if isinstance(v, list) else _parse_float(str(v))
-                        name = v[1] if isinstance(v, list) and len(v) > 1 else ""
-                        horses.append({"horse_number": hn, "horse_name": name, "odds": odds_val})
-                    if horses:
-                        return horses
-                except Exception:
-                    pass
-    except Exception as e:
-        print(f"[WARN] HTMLスクリプト解析失敗 {race_id}: {e}")
-
     return []
 
     # テーブルが見つからなかった場合 → 出馬表ページで再試行
