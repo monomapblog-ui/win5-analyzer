@@ -133,26 +133,16 @@ def debug_win5(date_str):
 
 @app.route("/debug/odds/<race_id>")
 def debug_odds(race_id):
-    """オッズページのセル構造を確認"""
+    """オッズAPIのレスポンスを確認"""
     from collectors.netkeiba import _get
-    url = f"https://race.netkeiba.com/odds/index.html?race_id={race_id}&type=b1"
-    resp = _get(url)
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
-    table = soup.find("table", class_="RaceOdds_HorseList_Table")
-    if not table:
-        # テーブル名一覧を返す
-        all_tables = [str(t.get("class")) for t in soup.find_all("table")]
-        return "テーブルが見つかりません。存在するテーブル: " + " / ".join(all_tables[:10])
-    lines = []
-    for row in table.find_all("tr")[:8]:
-        cells = row.find_all("td")
-        cell_info = []
-        for i, c in enumerate(cells):
-            text = c.get_text(strip=True)[:20]
-            spans = [s.get("class") or s.get("id") for s in c.find_all("span")]
-            cell_info.append(f"[{i}]{text}" + (f"(spans:{spans})" if spans else ""))
-        lines.append(" | ".join(cell_info))
-    return "<br>".join(lines)
+    api_url = f"https://race.netkeiba.com/api/api_get_jra_odds.html?race_id={race_id}&type=1&action=update"
+    try:
+        resp = _get(api_url)
+        ct = resp.headers.get("content-type", "")
+        body = resp.text[:3000]
+        return f"<b>URL:</b> {api_url}<br><b>Content-Type:</b> {ct}<br><b>Body:</b><pre>{body}</pre>"
+    except Exception as e:
+        return f"エラー: {e}"
 
 
 @app.route("/")
