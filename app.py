@@ -9,6 +9,48 @@ from collectors.shutuba import fetch_odds
 from buy import get_win5_race_ids, generate_pure_zone_sets
 from bs4 import BeautifulSoup
 
+
+def _fetch_race_info(race_id: str) -> dict:
+    """出馬表ページから頭数・馬場・距離を取得"""
+    url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
+    try:
+        resp = _get(url)
+        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+
+        # 馬場・距離
+        course_type = track_condition = distance = None
+        race_data = soup.find("div", class_="RaceData01")
+        if race_data:
+            text = race_data.get_text(" ", strip=True)
+            m = re.search(r"(芝|ダート|ダ|障害)([\d,]+)m", text)
+            if m:
+                raw = m.group(1)
+                course_type = "芝" if raw == "芝" else "ダート"
+                distance = int(m.group(2).replace(",", ""))
+            for cond in ["不良", "重", "稍重", "良"]:
+                if cond in text:
+                    track_condition = cond
+                    break
+
+        # 頭数
+        table = soup.find("table", class_=re.compile(r"Shutuba_Table|shutuba"))
+        field_size = 0
+        if table:
+            field_size = len([
+                r for r in table.find_all("tr")
+                if r.find("td") and re.search(r"^\d+$", (r.find("td").get_text(strip=True) or ""))
+            ])
+
+        return {
+            "field_size":      field_size,
+            "course_type":     course_type,
+            "distance":        distance,
+            "track_condition": track_condition,
+        }
+    except Exception as e:
+        print(f"[WARN] race_info取得失敗 {race_id}: {e}")
+        return {"field_size": 0, "course_type": None, "distance": None, "track_condition": None}
+
 app = Flask(__name__)
 
 
@@ -62,6 +104,55 @@ def _fetch_slots(date_str: str):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/check", methods=["POST"])
+def check_week():
+    """今週の購入判定（買う/スキップ）"""
+    data = request.get_json()
+    date_str = data.get("date", "").strip()
+    if not date_str:
+        date_str = _latest_win5_date()
+
+    slots_info = get_win5_race_ids(date_str)
+    if not slots_info:
+        return jsonify({"error": f"{date_str} のWIN5データが見つかりません"}), 404
+
+    race_details = []
+    for slot in slots_info:
+        race_id = slot.get("race_id")
+        if not race_id:
+            race_details.append({"slot": slot["slot_number"], "name": slot["name"],
+                                  "field_size": 0, "track_condition": None})
+            continue
+        info = _fetch_race_info(race_id)
+        info["slot"] = slot["slot_number"]
+        info["name"] = slot["name"]
+        info["race_id"] = race_id
+        race_details.append(info)
+        time.sleep(0.5)
+
+    field_sizes = [d["field_size"] for d in race_details if d["field_size"] > 0]
+    avg_field = sum(field_sizes) / len(field_sizes) if field_sizes else 0
+    heavy_count = sum(1 for d in race_details if d["track_condition"] in ("重", "不良"))
+
+    skip_reasons = []
+    if avg_field > 0 and avg_field < 12:
+        skip_reasons.append(f"平均出走頭数が{avg_field:.1f}頭（12頭未満）→ ターゲット率が低い週")
+    if heavy_count >= 3:
+        skip_reasons.append(f"重・不良馬場が{heavy_count}レース（3レース以上）→ 荒れやすい週")
+
+    verdict = "SKIP" if skip_reasons else "BUY"
+
+    return jsonify({
+        "date": date_str,
+        "date_label": f"{date_str[:4]}年{date_str[4:6]}月{date_str[6:]}日",
+        "verdict": verdict,
+        "avg_field_size": round(avg_field, 1),
+        "heavy_count": heavy_count,
+        "skip_reasons": skip_reasons,
+        "races": race_details,
+    })
 
 
 @app.route("/api/generate", methods=["POST"])
