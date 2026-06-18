@@ -207,9 +207,18 @@
 
     <!-- オッズ変動パネル -->
     <div id="movement-panel" style="display:none;background:#1a1a2e;border:1px solid #5a2a8a;border-radius:12px;padding:20px;margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
         <span style="font-size:0.9rem;color:#b88ae0;font-weight:bold;">📊 オッズ変動モニター</span>
-        <span style="font-size:0.75rem;color:#6a88aa;">🔴 急落 = 大口購入シグナル（オッズ30%↓ or 人気3つ↑）</span>
+        <span style="font-size:0.72rem;color:#6a88aa;">🔴 急落 = 大口購入シグナル（オッズ30%↓ or 人気3つ↑）</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <button onclick="reSnap()" id="resnap-btn" style="background:#1a3550;border:1px solid #2a5298;color:#8ba3c0;padding:7px 16px;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:bold;">
+          📸 再スナップ
+        </button>
+        <button onclick="reSnapAndGenerate()" id="resnap-gen-btn" style="background:linear-gradient(135deg,#1a3a1a,#2a6a2a);border:1px solid #2ecc71;color:#2ecc71;padding:7px 16px;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:bold;">
+          📸＋🎯 再スナップ＆再生成
+        </button>
+        <span id="snap-history-label" style="font-size:0.75rem;color:#4a6a8a;align-self:center;"></span>
       </div>
       <div id="movement-body"></div>
     </div>
@@ -357,6 +366,9 @@
         if (mres.ok) {
           renderMovement(mdata);
           document.getElementById('movement-panel').style.display = 'block';
+          // スナップ履歴ラベルを更新
+          const allLabels = [...new Set(mdata.slots.flatMap(s => s.horses.flatMap(h => (h.history||[]).map(p => p.at))))].slice(-6);
+          document.getElementById('snap-history-label').textContent = allLabels.length ? `記録: ${allLabels.join(' → ')}` : '';
         }
       } catch(e) { console.warn('movement失敗:', e); }
 
@@ -385,23 +397,61 @@
       }
     }
 
+    function _timeLabel() {
+      const now = new Date();
+      return `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    }
+
+    async function _doSnapshot(label) {
+      const res = await fetch('/api/snapshot', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date: getDateVal(), label}),
+      });
+      return res.json();
+    }
+
     async function saveSnapshot() {
-      const labels = ['前日夜', '当日朝', '締切前', '手動'];
-      const label = prompt('このスナップショットのラベルを選んでください:\n前日夜 / 当日朝 / 締切前', '締切前');
-      if (!label) return;
       const btn = document.getElementById('snap-btn');
       btn.disabled = true; btn.textContent = '記録中…';
       try {
-        const res = await fetch('/api/snapshot', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({date: getDateVal(), label}),
-        });
-        const data = await res.json();
-        if (!res.ok) { alert('エラー: ' + data.error); return; }
-        alert(`✅ 記録完了\nラベル: ${data.label}\n時刻: ${data.snapshot_at}\n馬数: ${data.saved}頭`);
+        const label = _timeLabel();
+        const data = await _doSnapshot(label);
+        if (data.error) { alert('エラー: ' + data.error); return; }
+        setStatus(`✅ ${label} のオッズを記録しました（${data.saved}頭）`, 'ok');
       } catch(e) { alert('通信エラー: ' + e.message); }
       finally { btn.disabled = false; btn.textContent = '📸 オッズ記録'; }
+    }
+
+    async function reSnap() {
+      const btn = document.getElementById('resnap-btn');
+      btn.disabled = true; btn.textContent = '記録中…';
+      try {
+        const label = _timeLabel();
+        const data = await _doSnapshot(label);
+        if (data.error) { alert('エラー: ' + data.error); return; }
+        // 変動表示を更新
+        await loadMovement();
+        setStatus(`✅ ${label} のオッズを記録しました（${data.saved}頭）`, 'ok');
+      } catch(e) { alert('通信エラー: ' + e.message); }
+      finally { btn.disabled = false; btn.textContent = '📸 再スナップ'; }
+    }
+
+    async function reSnapAndGenerate() {
+      const btn = document.getElementById('resnap-gen-btn');
+      btn.disabled = true; btn.textContent = '処理中…';
+      try {
+        // 再スナップ
+        const label = _timeLabel();
+        await _doSnapshot(label);
+        // 変動更新
+        await loadMovement();
+        // 買い目再生成
+        await generate();
+        if (!compactMode) toggleView();
+        setTimeout(() => document.getElementById('compact').scrollIntoView({behavior:'smooth'}), 300);
+      } catch(e) { alert('通信エラー: ' + e.message); }
+      finally { btn.disabled = false; btn.textContent = '📸＋🎯 再スナップ＆再生成'; }
     }
 
     async function loadMovement() {
