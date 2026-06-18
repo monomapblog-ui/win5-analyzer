@@ -184,6 +184,8 @@
           <input type="number" id="budget-input" value="50000" step="1000" min="1000">
         </div>
         <button class="btn btn-check" id="check-btn" onclick="checkWeek()">① 今週の判定</button>
+        <button class="btn" id="snap-btn" onclick="saveSnapshot()" style="background:#1a3550;border:1px solid #2a5298;color:#8ba3c0;">📸 オッズ記録</button>
+        <button class="btn" id="move-btn" onclick="loadMovement()" style="background:#2a1a40;border:1px solid #5a2a8a;color:#b88ae0;">📊 変動を見る</button>
         <button class="btn" id="select-btn" onclick="loadHorses()" style="background:#1a3a5a;border:1px solid #2a5298;color:#8ba3c0;">② 馬を選択</button>
         <button class="btn btn-generate" id="gen-btn" onclick="generate()">③ 買い目を生成</button>
       </div>
@@ -194,6 +196,15 @@
         <button class="preset-btn" onclick="setPreset(80000)">8万円</button>
         <button class="preset-btn" onclick="setPreset(100000)">10万円</button>
       </div>
+    </div>
+
+    <!-- オッズ変動パネル -->
+    <div id="movement-panel" style="display:none;background:#1a1a2e;border:1px solid #5a2a8a;border-radius:12px;padding:20px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <span style="font-size:0.9rem;color:#b88ae0;font-weight:bold;">📊 オッズ変動モニター</span>
+        <span style="font-size:0.75rem;color:#6a88aa;">🔴 急落 = 大口購入シグナル（オッズ30%↓ or 人気3つ↑）</span>
+      </div>
+      <div id="movement-body"></div>
     </div>
 
     <!-- 馬選択パネル -->
@@ -310,6 +321,77 @@
       }
 
       card.style.display = 'block';
+    }
+
+    async function saveSnapshot() {
+      const labels = ['前日夜', '当日朝', '締切前', '手動'];
+      const label = prompt('このスナップショットのラベルを選んでください:\n前日夜 / 当日朝 / 締切前', '締切前');
+      if (!label) return;
+      const btn = document.getElementById('snap-btn');
+      btn.disabled = true; btn.textContent = '記録中…';
+      try {
+        const res = await fetch('/api/snapshot', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({date: getDateVal(), label}),
+        });
+        const data = await res.json();
+        if (!res.ok) { alert('エラー: ' + data.error); return; }
+        alert(`✅ 記録完了\nラベル: ${data.label}\n時刻: ${data.snapshot_at}\n馬数: ${data.saved}頭`);
+      } catch(e) { alert('通信エラー: ' + e.message); }
+      finally { btn.disabled = false; btn.textContent = '📸 オッズ記録'; }
+    }
+
+    async function loadMovement() {
+      const btn = document.getElementById('move-btn');
+      btn.disabled = true; btn.textContent = '取得中…';
+      try {
+        const res = await fetch('/api/odds_movement', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({date: getDateVal()}),
+        });
+        const data = await res.json();
+        if (!res.ok) { alert('エラー: ' + data.error); return; }
+        renderMovement(data);
+        document.getElementById('movement-panel').style.display = 'block';
+      } catch(e) { alert('通信エラー: ' + e.message); }
+      finally { btn.disabled = false; btn.textContent = '📊 変動を見る'; }
+    }
+
+    function renderMovement(data) {
+      document.getElementById('movement-body').innerHTML = data.slots.map(slot => {
+        const horses = slot.horses.map(h => {
+          if (!h.history || h.history.length < 2) {
+            const cur = h.history && h.history[0];
+            return `<div style="padding:5px 0;border-bottom:1px solid #1e2840;opacity:0.5;font-size:0.8rem;">
+              ${h.horse_number}番 ${h.horse_name} — スナップショット1件のみ
+            </div>`;
+          }
+          const first = h.history[0], last = h.history[h.history.length - 1];
+          const chg = h.odds_change;
+          const popChg = h.pop_change;
+          const alertStyle = h.alert ? 'background:#3a0a0a;border-left:3px solid #e74c3c;' : '';
+          const chgColor = chg === null ? '#6a88aa' : chg < 0 ? '#e74c3c' : '#2ecc71';
+          const chgText = chg === null ? '—' : `${chg > 0 ? '+' : ''}${chg}%`;
+          const popText = popChg === null ? '' : popChg > 0 ? `<span style="color:#e74c3c;font-size:0.75rem;">人気+${popChg}</span>` :
+                          popChg < 0 ? `<span style="color:#2ecc71;font-size:0.75rem;">人気${popChg}</span>` : '';
+          const histText = h.history.map(p => `<span style="color:#6a88aa;font-size:0.7rem;">${p.label}:${p.odds}倍(${p.popularity}人気)</span>`).join(' → ');
+          return `<div style="padding:6px 8px;border-bottom:1px solid #1e2840;${alertStyle}display:flex;align-items:center;gap:10px;">
+            ${h.alert ? '<span style="color:#e74c3c;font-size:1rem;">🔴</span>' : '<span style="font-size:1rem;">　</span>'}
+            <span style="min-width:60px;font-size:0.85rem;color:${h.alert?'#ffd700':'#e8e8e8'};font-weight:${h.alert?'bold':'normal'};">${h.horse_number}番 ${h.horse_name}</span>
+            <span style="min-width:50px;font-size:0.9rem;color:${chgColor};font-weight:bold;">${chgText}</span>
+            ${popText}
+            <span style="font-size:0.75rem;color:#6a88aa;">${histText}</span>
+          </div>`;
+        }).join('');
+        return `<div style="margin-bottom:16px;">
+          <div style="font-size:0.8rem;color:#b88ae0;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #3a1a5a;">
+            R${slot.slot_number} ${slot.name}
+          </div>
+          ${horses || '<div style="color:#4a6a8a;font-size:0.8rem;">スナップショットなし</div>'}
+        </div>`;
+      }).join('');
     }
 
     async function loadHorses() {

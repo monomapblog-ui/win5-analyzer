@@ -1,8 +1,9 @@
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, Date, ForeignKey,
+    create_engine, Column, Integer, String, Float, Date, DateTime, ForeignKey,
     UniqueConstraint, CheckConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker, Session
+from datetime import datetime
 import os
 from dotenv import load_dotenv
 
@@ -133,6 +134,22 @@ class Win5RaceFeature(Base):
     winner_pop      = Column(Integer)    # 勝ち馬人気（再確認用）
 
     slot = relationship("Win5Slot", backref="feature")
+
+
+class OddsSnapshot(Base):
+    """オッズのスナップショット（時刻別に保存して変動を追跡）"""
+    __tablename__ = "odds_snapshots"
+
+    id            = Column(Integer, primary_key=True)
+    race_id       = Column(String(12), nullable=False)
+    horse_number  = Column(Integer,    nullable=False)
+    horse_name    = Column(String(50))
+    odds          = Column(Float)
+    popularity    = Column(Integer)
+    snapshot_at   = Column(DateTime, default=datetime.now, nullable=False)
+    label         = Column(String(20))  # "前日夜" / "当日朝" / "締切前" など
+
+    __table_args__ = (UniqueConstraint("race_id", "horse_number", "snapshot_at"),)
 
 
 def init_db():

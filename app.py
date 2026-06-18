@@ -2,12 +2,15 @@
 from flask import Flask, render_template, request, jsonify
 import time
 import re
-from datetime import date
+from datetime import date, datetime
 
 from collectors.netkeiba import _get, fetch_win5_by_date
 from collectors.shutuba import fetch_odds
 from buy import get_win5_race_ids, generate_pure_zone_sets
 from bs4 import BeautifulSoup
+from utils.db import init_db, SessionLocal, OddsSnapshot
+
+init_db()
 
 
 def _fetch_race_info(race_id: str) -> dict:
@@ -197,6 +200,123 @@ def check_week():
         "skip_reasons": skip_reasons,
         "races": race_details,
     })
+
+
+@app.route("/api/snapshot", methods=["POST"])
+def save_snapshot():
+    """現在のオッズをスナップショットとして保存"""
+    data = request.get_json()
+    date_str = data.get("date", "").strip() or _latest_win5_date()
+    label = data.get("label", "手動").strip()
+
+    slots_info = get_win5_race_ids(date_str)
+    if not slots_info:
+        return jsonify({"error": f"{date_str} のWIN5データが見つかりません"}), 404
+
+    now = datetime.now().replace(microsecond=0)
+    saved = 0
+    with SessionLocal() as session:
+        for slot in slots_info:
+            race_id = slot.get("race_id")
+            if not race_id:
+                continue
+            try:
+                horses = fetch_odds(race_id)
+                for h in horses:
+                    snap = OddsSnapshot(
+                        race_id=race_id,
+                        horse_number=h["horse_number"],
+                        horse_name=h.get("horse_name", ""),
+                        odds=h.get("odds"),
+                        popularity=h.get("popularity"),
+                        snapshot_at=now,
+                        label=label,
+                    )
+                    session.merge(snap)
+                    saved += 1
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"[ERROR] snapshot slot{slot['slot_number']}: {e}")
+        session.commit()
+
+    return jsonify({"saved": saved, "label": label, "snapshot_at": now.strftime("%Y-%m-%d %H:%M:%S")})
+
+
+@app.route("/api/odds_movement", methods=["POST"])
+def odds_movement():
+    """スナップショット間のオッズ変動を返す"""
+    from sqlalchemy import select
+    data = request.get_json()
+    date_str = data.get("date", "").strip() or _latest_win5_date()
+
+    slots_info = get_win5_race_ids(date_str)
+    if not slots_info:
+        return jsonify({"error": "データなし"}), 404
+
+    race_ids = [s["race_id"] for s in slots_info if s.get("race_id")]
+
+    with SessionLocal() as session:
+        snaps = session.execute(
+            select(OddsSnapshot)
+            .where(OddsSnapshot.race_id.in_(race_ids))
+            .order_by(OddsSnapshot.race_id, OddsSnapshot.horse_number, OddsSnapshot.snapshot_at)
+        ).scalars().all()
+
+    # race_id → horse_number → [{label, odds, popularity, snapshot_at}]
+    from collections import defaultdict
+    by_race = defaultdict(lambda: defaultdict(list))
+    for s in snaps:
+        by_race[s.race_id][s.horse_number].append({
+            "label": s.label,
+            "odds": s.odds,
+            "popularity": s.popularity,
+            "at": s.snapshot_at.strftime("%m/%d %H:%M"),
+        })
+
+    result = []
+    for slot in slots_info:
+        race_id = slot.get("race_id")
+        horses_data = by_race.get(race_id, {})
+        horses = []
+        for horse_num, history in sorted(horses_data.items()):
+            if len(history) < 2:
+                first = history[0] if history else {}
+                horses.append({
+                    "horse_number": horse_num,
+                    "horse_name": next((s.horse_name for s in snaps if s.race_id == race_id and s.horse_number == horse_num), ""),
+                    "history": history,
+                    "odds_change": None,
+                    "pop_change": None,
+                    "alert": False,
+                })
+                continue
+            first, last = history[0], history[-1]
+            odds_change = None
+            if first["odds"] and last["odds"]:
+                odds_change = round((last["odds"] - first["odds"]) / first["odds"] * 100, 1)
+            pop_change = None
+            if first["popularity"] and last["popularity"]:
+                pop_change = first["popularity"] - last["popularity"]  # 正=人気上昇
+            # 急落アラート: オッズ30%以上下落 or 人気3つ以上上昇
+            alert = (odds_change is not None and odds_change <= -30) or \
+                    (pop_change is not None and pop_change >= 3)
+            horse_name = next((s.horse_name for s in snaps if s.race_id == race_id and s.horse_number == horse_num), "")
+            horses.append({
+                "horse_number": horse_num,
+                "horse_name": horse_name,
+                "history": history,
+                "odds_change": odds_change,
+                "pop_change": pop_change,
+                "alert": alert,
+            })
+        result.append({
+            "slot_number": slot["slot_number"],
+            "name": slot["name"],
+            "race_id": race_id,
+            "horses": horses,
+        })
+
+    return jsonify({"date": date_str, "slots": result})
 
 
 @app.route("/api/horses", methods=["POST"])
