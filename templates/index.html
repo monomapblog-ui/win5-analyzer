@@ -189,6 +189,13 @@
         <button class="btn" id="select-btn" onclick="loadHorses()" style="background:#1a3a5a;border:1px solid #2a5298;color:#8ba3c0;">② 馬を選択</button>
         <button class="btn btn-generate" id="gen-btn" onclick="generate()">③ 買い目を生成</button>
       </div>
+      <!-- 締切直前ワンボタン -->
+      <div style="margin-top:12px;">
+        <button id="quick-btn" onclick="quickGenerate()" style="width:100%;padding:14px;background:linear-gradient(135deg,#7b2d00,#c0392b);border:2px solid #e74c3c;border-radius:10px;color:#fff;font-size:1.05rem;font-weight:bold;cursor:pointer;letter-spacing:.05em;">
+          🚀 締切前ワンボタン — 記録 → 急落確認 → 買い目生成
+        </button>
+        <div style="font-size:0.72rem;color:#6a88aa;text-align:center;margin-top:4px;">14:30〜35頃に押す → 変動表示＋買い目が一気に出ます</div>
+      </div>
       <div class="budget-presets">
         <span style="font-size:0.75rem;color:#8ba3c0;align-self:center;">予算:</span>
         <button class="preset-btn" onclick="setPreset(30000)">3万円</button>
@@ -321,6 +328,61 @@
       }
 
       card.style.display = 'block';
+    }
+
+    async function quickGenerate() {
+      const btn = document.getElementById('quick-btn');
+      btn.disabled = true;
+      const budget = parseInt(document.getElementById('budget-input').value);
+      if (isNaN(budget) || budget < 1000) { alert('予算を入力してください'); btn.disabled=false; return; }
+      const dateVal = getDateVal();
+
+      // Step1: スナップショット保存
+      btn.textContent = '📸 オッズ記録中…';
+      try {
+        await fetch('/api/snapshot', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({date: dateVal, label: '締切前'}),
+        });
+      } catch(e) { console.warn('snapshot失敗:', e); }
+
+      // Step2: 変動取得して表示
+      btn.textContent = '📊 変動確認中…';
+      try {
+        const mres = await fetch('/api/odds_movement', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({date: dateVal}),
+        });
+        const mdata = await mres.json();
+        if (mres.ok) {
+          renderMovement(mdata);
+          document.getElementById('movement-panel').style.display = 'block';
+        }
+      } catch(e) { console.warn('movement失敗:', e); }
+
+      // Step3: 買い目生成
+      btn.textContent = '🎯 買い目生成中…';
+      document.getElementById('result').style.display = 'none';
+      setStatus('データ取得中… しばらくお待ちください（10〜30秒）', 'loading');
+      try {
+        const res = await fetch('/api/generate', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({budget, date: dateVal, excluded: getExcluded()}),
+        });
+        const data = await res.json();
+        if (!res.ok) { setStatus('エラー: '+(data.error||res.statusText),'error'); return; }
+        setStatus(`✔ ${data.date_label} — ${data.total_tickets}チケット / ${data.total_combos}通り / ${data.total_cost.toLocaleString()}円`, 'ok');
+        renderResult(data);
+        // コンパクト表示を自動で開く
+        if (!compactMode) toggleView();
+        // ページ最下部へスクロール（買い目がすぐ見える）
+        setTimeout(() => document.getElementById('compact').scrollIntoView({behavior:'smooth'}), 300);
+      } catch(e) {
+        setStatus('通信エラー: '+e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 締切前ワンボタン — 記録 → 急落確認 → 買い目生成';
+      }
     }
 
     async function saveSnapshot() {
