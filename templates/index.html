@@ -14,56 +14,59 @@
     }
     header {
       background: linear-gradient(135deg, #1a2a4a, #0d3b6e);
-      padding: 20px 24px;
+      padding: 14px 16px;
       border-bottom: 2px solid #2a5298;
+      position: sticky; top: 0; z-index: 100;
     }
-    header h1 { font-size: 1.6rem; color: #ffd700; letter-spacing: 0.05em; }
-    header p { font-size: 0.85rem; color: #8ba3c0; margin-top: 4px; }
+    header h1 { font-size: 1.3rem; color: #ffd700; letter-spacing: 0.05em; }
+    header p { font-size: 0.75rem; color: #8ba3c0; margin-top: 2px; }
 
-    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    .container { max-width: 960px; margin: 0 auto; padding: 16px 12px; }
 
     /* ─── フォーム ─── */
     .form-card {
       background: #1a2535;
       border: 1px solid #2a3d55;
       border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
+      padding: 16px;
+      margin-bottom: 14px;
     }
-    .form-card h2 { font-size: 1rem; color: #8ba3c0; margin-bottom: 16px; }
-    .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-    .form-group { display: flex; flex-direction: column; gap: 6px; }
-    .form-group label { font-size: 0.8rem; color: #8ba3c0; }
+    .form-card h2 { font-size: 0.9rem; color: #8ba3c0; margin-bottom: 12px; }
+    .form-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: 0.75rem; color: #8ba3c0; }
     .form-group input {
       background: #0f1923;
       border: 1px solid #2a3d55;
       border-radius: 8px;
       color: #e8e8e8;
-      padding: 10px 14px;
+      padding: 10px 12px;
       font-size: 1rem;
-      width: 180px;
+      width: 150px;
     }
     .form-group input:focus { outline: none; border-color: #ffd700; }
     .btn {
-      border: none; border-radius: 8px; padding: 11px 24px;
-      font-size: 0.95rem; font-weight: bold; cursor: pointer; transition: opacity 0.2s;
+      border: none; border-radius: 8px; padding: 11px 16px;
+      font-size: 0.9rem; font-weight: bold; cursor: pointer; transition: opacity 0.2s;
+      white-space: nowrap;
     }
     .btn:hover { opacity: 0.85; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-check { background: #2a5298; color: #fff; }
     .btn-generate { background: linear-gradient(135deg, #f0a500, #ffd700); color: #0f1923; }
 
-    .budget-presets { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .budget-presets { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .preset-btn {
       background: #1a2535; border: 1px solid #2a5298; border-radius: 6px;
-      color: #8ba3c0; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; transition: all 0.15s;
+      color: #8ba3c0; padding: 6px 12px; font-size: 0.85rem; cursor: pointer; transition: all 0.15s;
+      flex: 1; min-width: 60px; text-align: center;
     }
     .preset-btn:hover, .preset-btn.active { background: #2a3d55; border-color: #ffd700; color: #ffd700; }
 
     /* ─── ステータス ─── */
     .status-bar {
-      border-radius: 8px; padding: 12px 18px; margin-bottom: 16px;
-      font-size: 0.9rem; display: none;
+      border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;
+      font-size: 0.85rem; display: none;
     }
     .status-bar.loading { background:#1a2535; border:1px solid #2a5298; color:#8ba3c0; }
     .status-bar.error   { background:#1a0a0a; border:1px solid #c0392b; color:#e74c3c; }
@@ -71,97 +74,126 @@
 
     /* ─── 週判定バナー ─── */
     .verdict-card {
-      border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; display: none;
+      border-radius: 12px; padding: 16px; margin-bottom: 14px; display: none;
     }
     .verdict-card.buy  { background:#0a2a0a; border:2px solid #27ae60; }
     .verdict-card.skip { background:#2a0a0a; border:2px solid #c0392b; }
-    .verdict-title { font-size: 1.4rem; font-weight: bold; margin-bottom: 8px; }
+    .verdict-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 6px; }
     .verdict-card.buy  .verdict-title { color: #2ecc71; }
     .verdict-card.skip .verdict-title { color: #e74c3c; }
-    .verdict-detail { font-size: 0.85rem; color: #a0b0c0; margin-bottom: 12px; }
-    .verdict-races { display: flex; gap: 8px; flex-wrap: wrap; }
+    .verdict-detail { font-size: 0.8rem; color: #a0b0c0; margin-bottom: 10px; }
+    .verdict-races { display: flex; gap: 6px; flex-wrap: wrap; }
     .verdict-race {
       background: #0f1923; border: 1px solid #2a3d55; border-radius: 6px;
-      padding: 6px 12px; font-size: 0.8rem;
+      padding: 5px 10px; font-size: 0.75rem; flex: 1; min-width: 140px;
     }
     .verdict-race .rname { color: #c0d0e0; }
-    .verdict-race .rinfo { color: #8ba3c0; font-size: 0.75rem; margin-top: 2px; }
+    .verdict-race .rinfo { color: #8ba3c0; font-size: 0.7rem; margin-top: 2px; }
     .verdict-race.heavy { border-color: #c0392b; }
-    .skip-reasons { margin-top: 10px; }
+    .skip-reasons { margin-top: 8px; }
     .skip-reason {
       background: #3a0a0a; border-left: 3px solid #e74c3c;
-      padding: 6px 12px; font-size: 0.8rem; color: #e74c3c; margin-top: 6px; border-radius: 0 4px 4px 0;
+      padding: 6px 10px; font-size: 0.8rem; color: #e74c3c; margin-top: 6px; border-radius: 0 4px 4px 0;
     }
 
     /* ─── サマリー ─── */
     .summary-bar {
       background: linear-gradient(135deg, #0d3b6e, #1a2a4a);
       border: 1px solid #2a5298; border-radius: 10px;
-      padding: 16px 20px; margin-bottom: 20px;
-      display: flex; gap: 32px; flex-wrap: wrap; align-items: center;
+      padding: 14px 16px; margin-bottom: 16px;
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
     }
     .summary-item { display: flex; flex-direction: column; gap: 2px; }
-    .summary-item .label { font-size: 0.75rem; color: #8ba3c0; }
-    .summary-item .value { font-size: 1.3rem; font-weight: bold; color: #ffd700; }
+    .summary-item .label { font-size: 0.7rem; color: #8ba3c0; }
+    .summary-item .value { font-size: 1.2rem; font-weight: bold; color: #ffd700; }
 
     /* ─── チケット ─── */
-    .ticket { background:#1a2535; border:1px solid #2a3d55; border-radius:12px; margin-bottom:16px; overflow:hidden; }
+    .ticket { background:#1a2535; border:1px solid #2a3d55; border-radius:12px; margin-bottom:12px; overflow:hidden; }
     .ticket-header {
-      background: #0d3b6e; padding: 12px 18px;
-      display: flex; justify-content: space-between; align-items: center;
+      background: #0d3b6e; padding: 10px 14px;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
     }
-    .ticket-header .ticket-no { font-size: 0.85rem; color: #8ba3c0; }
-    .ticket-header .ticket-info { display: flex; gap: 20px; align-items: center; }
-    .ticket-header .combos { color: #ffd700; font-weight: bold; }
+    .ticket-header .ticket-no { font-size: 0.8rem; color: #8ba3c0; }
+    .ticket-header .ticket-info { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .ticket-header .combos { color: #ffd700; font-weight: bold; font-size: 0.9rem; }
     .range-badge {
       background:#1a4a1a; border:1px solid #27ae60; border-radius:4px;
-      padding:2px 8px; font-size:0.75rem; color:#2ecc71;
+      padding:2px 6px; font-size:0.72rem; color:#2ecc71;
     }
 
-    table.slot-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+    /* スマホではテーブルを縦積みに */
+    table.slot-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
     table.slot-table th {
-      background:#141e2e; color:#8ba3c0; padding:8px 12px; text-align:left;
-      font-weight:normal; font-size:0.75rem; border-bottom:1px solid #2a3d55;
+      background:#141e2e; color:#8ba3c0; padding:6px 10px; text-align:left;
+      font-weight:normal; font-size:0.72rem; border-bottom:1px solid #2a3d55;
     }
-    table.slot-table td { padding:10px 12px; border-bottom:1px solid #1e2d42; vertical-align:middle; }
+    table.slot-table td { padding:8px 10px; border-bottom:1px solid #1e2d42; vertical-align:middle; }
     table.slot-table tr:last-child td { border-bottom:none; }
-    .slot-num { color:#8ba3c0; font-size:0.8rem; }
-    .race-name { color:#c0d0e0; }
-    .pop-range { color:#8ba3c0; font-size:0.8rem; }
+    .slot-num { color:#8ba3c0; font-size:0.78rem; white-space:nowrap; }
+    .race-name { color:#c0d0e0; font-size:0.78rem; }
+    .pop-range { color:#8ba3c0; font-size:0.75rem; white-space:nowrap; }
 
-    .horse-list { display:flex; gap:8px; flex-wrap:wrap; }
-    .horse-chip {
-      display:flex; align-items:center; gap:4px;
-      background:#0f1923; border:1px solid #2a3d55; border-radius:5px; padding:3px 8px; font-size:0.8rem;
+    /* スマホでは詳細テーブルを隠してコンパクト優先 */
+    @media (max-width: 600px) {
+      table.slot-table th:nth-child(3),
+      table.slot-table td:nth-child(3) { display: none; }
+      .ticket-header .ticket-info { gap: 8px; }
     }
-    .horse-chip .num {
-      background:#2a5298; color:#fff; border-radius:3px; padding:0 5px;
-      font-weight:bold; font-size:0.75rem; min-width:22px; text-align:center;
-    }
-    .horse-chip .pop { color:#f0a500; font-size:0.7rem; }
 
-    .ipat-row { background:#0f1923; border-top:1px solid #2a3d55; padding:12px 18px; }
-    .ipat-row .ipat-label { font-size:0.75rem; color:#8ba3c0; margin-bottom:6px; }
-    .ipat-grid { display:flex; gap:8px; flex-wrap:wrap; }
+    .ipat-row { background:#0f1923; border-top:1px solid #2a3d55; padding:10px 14px; }
+    .ipat-row .ipat-label { font-size:0.72rem; color:#8ba3c0; margin-bottom:6px; }
+    .ipat-grid { display:flex; gap:6px; flex-wrap:wrap; }
     .ipat-slot {
       background:#1a2535; border:1px solid #2a5298; border-radius:6px;
-      padding:6px 12px; font-size:0.85rem; font-family:monospace; color:#e8e8e8;
+      padding:5px 10px; font-size:0.82rem; font-family:monospace; color:#e8e8e8;
     }
-    .ipat-slot span { color:#8ba3c0; font-size:0.75rem; margin-right:4px; }
+    .ipat-slot span { color:#8ba3c0; font-size:0.72rem; margin-right:3px; }
 
     .zone-note {
       background:#0f2a1a; border:1px solid #27ae60; border-radius:8px;
-      padding:10px 16px; font-size:0.8rem; color:#2ecc71; margin-bottom:20px;
+      padding:8px 14px; font-size:0.78rem; color:#2ecc71; margin-bottom:14px;
     }
     .zone-note strong { color:#ffd700; }
 
     #result { display:none; }
-    .races-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+    .races-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
     .race-chip {
       background:#1a2535; border:1px solid #2a3d55; border-radius:6px;
-      padding:6px 12px; font-size:0.8rem; color:#8ba3c0;
+      padding:5px 10px; font-size:0.75rem; color:#8ba3c0;
     }
-    .race-chip span { color:#ffd700; font-weight:bold; margin-right:4px; }
+    .race-chip span { color:#ffd700; font-weight:bold; margin-right:3px; }
+
+    /* ─── コンパクト表示（スマホ最重要） ─── */
+    #compact-ipat {
+      background: #0f1923;
+      border: 2px solid #ffd700;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    #compact-ipat .ipat-title {
+      font-size: 0.75rem; color: #8ba3c0; margin-bottom: 12px; letter-spacing:.05em;
+    }
+    .ipat-race-row {
+      display: flex; align-items: baseline; gap: 8px;
+      padding: 8px 0; border-bottom: 1px solid #1e3050;
+    }
+    .ipat-race-label {
+      min-width: 36px; font-size: 0.72rem; color: #8ba3c0; flex-shrink: 0;
+    }
+    .ipat-race-nums {
+      font-size: 1.3rem; font-weight: bold; color: #ffd700; letter-spacing: .08em;
+    }
+    .ipat-ticket-row {
+      padding: 7px 0; border-bottom: 1px solid #1a2a3a;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    }
+    .ipat-ticket-label {
+      color: #ffd700; font-weight: bold; font-size: 0.85rem; min-width: 28px;
+    }
+    .ipat-ticket-slot { margin-right: 8px; white-space: nowrap; font-size: 0.85rem; }
+    .ipat-ticket-slot-r { color: #6a88aa; font-size: 0.72rem; }
+    .ipat-ticket-combos { color: #4a6a8a; font-size: 0.75rem; margin-left: auto; }
   </style>
 </head>
 <body>
@@ -183,18 +215,21 @@
           <label>予算</label>
           <input type="number" id="budget-input" value="50000" step="1000" min="1000">
         </div>
-        <button class="btn btn-check" id="check-btn" onclick="checkWeek()">① 今週の判定</button>
-        <button class="btn" id="snap-btn" onclick="saveSnapshot()" style="background:#1a3550;border:1px solid #2a5298;color:#8ba3c0;">📸 オッズ記録</button>
-        <button class="btn" id="move-btn" onclick="loadMovement()" style="background:#2a1a40;border:1px solid #5a2a8a;color:#b88ae0;">📊 変動を見る</button>
-        <button class="btn" id="select-btn" onclick="loadHorses()" style="background:#1a3a5a;border:1px solid #2a5298;color:#8ba3c0;">② 馬を選択</button>
-        <button class="btn btn-generate" id="gen-btn" onclick="generate()">③ 買い目を生成</button>
+        <!-- 通常ボタン群（2列グリッド） -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;margin-top:6px;">
+          <button class="btn btn-check" id="check-btn" onclick="checkWeek()" style="width:100%;">① 今週の判定</button>
+          <button class="btn" id="snap-btn" onclick="saveSnapshot()" style="width:100%;background:#1a3550;border:1px solid #2a5298;color:#8ba3c0;">📸 オッズ記録</button>
+          <button class="btn" id="move-btn" onclick="loadMovement()" style="width:100%;background:#2a1a40;border:1px solid #5a2a8a;color:#b88ae0;">📊 変動を見る</button>
+          <button class="btn" id="select-btn" onclick="loadHorses()" style="width:100%;background:#1a3a5a;border:1px solid #2a5298;color:#8ba3c0;">② 馬を選択</button>
+          <button class="btn btn-generate" id="gen-btn" onclick="generate()" style="width:100%;grid-column:span 2;">③ 買い目を生成</button>
+        </div>
       </div>
       <!-- 締切直前ワンボタン -->
-      <div style="margin-top:12px;">
-        <button id="quick-btn" onclick="quickGenerate()" style="width:100%;padding:14px;background:linear-gradient(135deg,#7b2d00,#c0392b);border:2px solid #e74c3c;border-radius:10px;color:#fff;font-size:1.05rem;font-weight:bold;cursor:pointer;letter-spacing:.05em;">
-          🚀 締切前ワンボタン — 記録 → 急落確認 → 買い目生成
+      <div style="margin-top:10px;">
+        <button id="quick-btn" onclick="quickGenerate()" style="width:100%;padding:16px;background:linear-gradient(135deg,#7b2d00,#c0392b);border:2px solid #e74c3c;border-radius:10px;color:#fff;font-size:1.1rem;font-weight:bold;cursor:pointer;letter-spacing:.05em;">
+          🚀 締切前ワンボタン
         </button>
-        <div style="font-size:0.72rem;color:#6a88aa;text-align:center;margin-top:4px;">14:30〜35頃に押す → 変動表示＋買い目が一気に出ます</div>
+        <div style="font-size:0.72rem;color:#6a88aa;text-align:center;margin-top:4px;">14:30〜35頃に押す — 記録 → 急落確認 → 買い目生成 を一発で</div>
       </div>
       <div class="budget-presets">
         <span style="font-size:0.75rem;color:#8ba3c0;align-self:center;">予算:</span>
@@ -660,23 +695,34 @@
         </div>`;
       }).join('');
 
-      // ② チケット別一覧（横並び簡易）
+      // ① レース別 全チケット応援馬番（大きく表示）
+      const raceUnionRows = data.races.map((r, ri) => {
+        const allNums = new Set();
+        data.tickets.forEach(t => t.slots[ri].numbers.forEach(n => allNums.add(n)));
+        const sorted = [...allNums].sort((a,b)=>a-b);
+        return `<div class="ipat-race-row">
+          <span class="ipat-race-label">R${r.slot}</span>
+          <span class="ipat-race-nums">${sorted.join('・')}番</span>
+        </div>`;
+      }).join('');
+
+      // ② チケット別一覧
       const ticketRows = data.tickets.map(t => {
-        const slots = t.slots.map(s => `<span style="margin-right:12px;white-space:nowrap;"><span style="color:#6a88aa;font-size:0.7rem;">R${s.slot}▶</span><span style="color:#e8e8e8;font-size:0.85rem;">${s.numbers.join('・')}番</span></span>`).join('');
-        return `<div style="padding:7px 0;border-bottom:1px solid #1a2a3a;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
-          <span style="color:#ffd700;font-weight:bold;font-size:0.85rem;min-width:28px;">T${t.ticket_no}</span>
+        const slots = t.slots.map(s => `<span class="ipat-ticket-slot"><span class="ipat-ticket-slot-r">R${s.slot}▶</span>${s.numbers.join('・')}番</span>`).join('');
+        return `<div class="ipat-ticket-row">
+          <span class="ipat-ticket-label">T${t.ticket_no}</span>
           ${slots}
-          <span style="color:#4a6a8a;font-size:0.75rem;margin-left:auto;">${t.combos}通り</span>
+          <span class="ipat-ticket-combos">${t.combos}通り</span>
         </div>`;
       }).join('');
 
       document.getElementById('compact-body').innerHTML =
         `<div style="margin-bottom:16px;">
            <div style="font-size:0.7rem;color:#4a6a8a;margin-bottom:6px;letter-spacing:.05em;">▼ レース別 応援馬番（全チケット共通）</div>
-           ${raceUnion}
+           ${raceUnionRows}
          </div>
          <div>
-           <div style="font-size:0.7rem;color:#4a6a8a;margin-bottom:6px;letter-spacing:.05em;">▼ チケット別 買い目</div>
+           <div style="font-size:0.7rem;color:#4a6a8a;margin-bottom:6px;margin-top:14px;letter-spacing:.05em;">▼ チケット別 買い目</div>
            ${ticketRows}
          </div>`;
 
