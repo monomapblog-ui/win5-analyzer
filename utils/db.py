@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# 同期版SQLite（aiosqlite不要・greenlet不要）
+# Render.com は DATABASE_URL_SYNC に postgresql:// を渡してくるため psycopg2 用に変換
 DATABASE_URL = os.getenv("DATABASE_URL_SYNC", "sqlite:///./win5.db")
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(engine, expire_on_commit=False)

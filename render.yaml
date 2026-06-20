@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: win5-analyzer
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: DATABASE_URL_SYNC
+        fromDatabase:
+          name: win5-db
+          property: connectionString
+      - key: REQUEST_DELAY_SECONDS
+        value: "1.5"
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+
+databases:
+  - name: win5-db
+    databaseName: win5
+    plan: free
