@@ -378,6 +378,16 @@ def generate():
                 slots_odds[i] = [h for h in odds if h["horse_number"] not in ex_nums]
                 print(f"[INFO] slot{i+1} 除外馬番: {sorted(ex_nums)} → 残り{len(slots_odds[i])}頭")
 
+    # データ推奨フィルター（328回の実績から導出）
+    # S1,S2,S5: 1〜4人気で70%+カバー / S3,S4: 1〜5人気で73%+カバー
+    SLOT_RECOMMENDED_TOP = {1: 4, 2: 4, 3: 5, 4: 5, 5: 4}
+    if data.get("auto_filter"):
+        for i, odds in enumerate(slots_odds):
+            top_n = SLOT_RECOMMENDED_TOP[i + 1]
+            before = len(odds)
+            slots_odds[i] = [h for h in odds if (h.get("popularity") or 999) <= top_n]
+            print(f"[INFO] slot{i+1} データ推奨フィルター: 1〜{top_n}人気 {before}頭→{len(slots_odds[i])}頭")
+
     # デバッグ: 各スロットのpopularity付き馬数を確認
     for i, odds in enumerate(slots_odds):
         with_pop = [h for h in odds if h.get("popularity")]

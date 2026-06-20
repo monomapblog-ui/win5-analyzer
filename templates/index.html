@@ -231,6 +231,17 @@
         </button>
         <div style="font-size:0.72rem;color:#6a88aa;text-align:center;margin-top:4px;">14:30〜35頃に押す — 記録 → 急落確認 → 買い目生成 を一発で</div>
       </div>
+      <!-- データ推奨フィルター -->
+      <div style="margin-top:10px;background:#0f2a1a;border:1px solid #27ae60;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div>
+          <span style="font-size:0.85rem;color:#2ecc71;font-weight:bold;">📊 データ推奨フィルター</span>
+          <div style="font-size:0.72rem;color:#6a88aa;margin-top:2px;">328回実績: R1・R2・R5→1〜4人気 / R3・R4→1〜5人気 で約70%カバー</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="auto-filter" style="width:18px;height:18px;cursor:pointer;">
+          <span style="font-size:0.9rem;color:#2ecc71;font-weight:bold;">適用する</span>
+        </label>
+      </div>
       <div class="budget-presets">
         <span style="font-size:0.75rem;color:#8ba3c0;align-self:center;">予算:</span>
         <button class="preset-btn" onclick="setPreset(30000)">3万円</button>
@@ -414,7 +425,7 @@
       try {
         const res = await fetch('/api/generate', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({budget, date: dateVal, excluded: getExcluded()}),
+          body: JSON.stringify({budget, date: dateVal, excluded: getExcluded(), auto_filter: document.getElementById('auto-filter').checked}),
         });
         const data = await res.json();
         if (!res.ok) { setStatus('エラー: '+(data.error||res.statusText),'error'); return; }
@@ -622,7 +633,7 @@
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({budget, date: getDateVal(), excluded: getExcluded()}),
+          body: JSON.stringify({budget, date: getDateVal(), excluded: getExcluded(), auto_filter: document.getElementById('auto-filter').checked}),
         });
         const data = await res.json();
         if (!res.ok) { setStatus('エラー: ' + (data.error || res.statusText), 'error'); return; }
