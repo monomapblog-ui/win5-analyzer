@@ -8,7 +8,7 @@ from collectors.netkeiba import _get, fetch_win5_by_date
 from collectors.shutuba import fetch_odds
 from buy import get_win5_race_ids, generate_pure_zone_sets
 from bs4 import BeautifulSoup
-from utils.db import init_db, SessionLocal, OddsSnapshot
+from utils.db import init_db, SessionLocal, OddsSnapshot, BuySession, BuyTicket
 
 init_db()
 
@@ -449,6 +449,142 @@ def generate():
             {"slot": i + 1, "name": info["name"], "race_id": info.get("race_id")}
             for i, info in enumerate(slots_info)
         ],
+    })
+
+
+@app.route("/api/save_tickets", methods=["POST"])
+def save_tickets():
+    """生成した買い目をDBに保存"""
+    from sqlalchemy import select
+    data = request.get_json()
+    date_str = data.get("date", "")
+    budget = data.get("budget", 0)
+    total_cost = data.get("total_cost", 0)
+    tickets = data.get("tickets", [])
+
+    with SessionLocal() as session:
+        # 既存セッションがあれば上書き
+        existing = session.scalar(select(BuySession).where(BuySession.held_date == date_str))
+        if existing:
+            for t in existing.tickets:
+                session.delete(t)
+            session.flush()
+            bs = existing
+            bs.budget = budget
+            bs.total_cost = total_cost
+            bs.created_at = datetime.now()
+        else:
+            bs = BuySession(held_date=date_str, budget=budget, total_cost=total_cost)
+            session.add(bs)
+        session.flush()
+
+        for t in tickets:
+            slots = t.get("slots", [])
+            bt = BuyTicket(
+                session_id=bs.id,
+                ticket_no=t["ticket_no"],
+                combos=t["combos"],
+                cost=t["cost"],
+                slot1=",".join(str(n) for n in (slots[0]["numbers"] if len(slots) > 0 else [])),
+                slot2=",".join(str(n) for n in (slots[1]["numbers"] if len(slots) > 1 else [])),
+                slot3=",".join(str(n) for n in (slots[2]["numbers"] if len(slots) > 2 else [])),
+                slot4=",".join(str(n) for n in (slots[3]["numbers"] if len(slots) > 3 else [])),
+                slot5=",".join(str(n) for n in (slots[4]["numbers"] if len(slots) > 4 else [])),
+            )
+            session.add(bt)
+        session.commit()
+
+    return jsonify({"saved": True, "date": date_str, "tickets": len(tickets)})
+
+
+@app.route("/api/save_result", methods=["POST"])
+def save_result():
+    """WIN5結果（各レース勝ち馬番）を入力して的中チェック"""
+    from sqlalchemy import select
+    data = request.get_json()
+    date_str = data.get("date", "")
+    winners = data.get("winners", [])   # [馬番1, 馬番2, 馬番3, 馬番4, 馬番5]
+    payout = data.get("payout", 0)      # 払戻金額（外れは0）
+
+    with SessionLocal() as session:
+        bs = session.scalar(select(BuySession).where(BuySession.held_date == date_str))
+        if not bs:
+            return jsonify({"error": "買い目が保存されていません"}), 404
+
+        bs.payout = payout
+        session.flush()
+
+        # 各チケットの的中チェック
+        hit_tickets = []
+        for bt in bs.tickets:
+            slot_lists = [
+                [int(n) for n in bt.slot1.split(",") if n],
+                [int(n) for n in bt.slot2.split(",") if n],
+                [int(n) for n in bt.slot3.split(",") if n],
+                [int(n) for n in bt.slot4.split(",") if n],
+                [int(n) for n in bt.slot5.split(",") if n],
+            ]
+            matched = all(w in slot_lists[i] for i, w in enumerate(winners))
+            if matched:
+                hit_tickets.append(bt.ticket_no)
+
+        session.commit()
+
+    return jsonify({
+        "date": date_str,
+        "winners": winners,
+        "payout": payout,
+        "hit": len(hit_tickets) > 0,
+        "hit_tickets": hit_tickets,
+    })
+
+
+@app.route("/api/history", methods=["GET"])
+def get_history():
+    """購入履歴と回収率を返す"""
+    from sqlalchemy import select
+    with SessionLocal() as session:
+        sessions = session.execute(
+            select(BuySession).order_by(BuySession.held_date.desc()).limit(20)
+        ).scalars().all()
+
+        records = []
+        total_cost = 0
+        total_payout = 0
+        for bs in sessions:
+            tickets = session.execute(
+                select(BuyTicket).where(BuyTicket.session_id == bs.id)
+            ).scalars().all()
+            cost = bs.total_cost or 0
+            payout = bs.payout
+            total_cost += cost
+            if payout is not None:
+                total_payout += payout
+            records.append({
+                "date": bs.held_date,
+                "date_label": f"{bs.held_date[:4]}年{bs.held_date[4:6]}月{bs.held_date[6:]}日",
+                "budget": bs.budget,
+                "total_cost": cost,
+                "payout": payout,
+                "hit": payout is not None and payout > 0,
+                "profit": (payout - cost) if payout is not None else None,
+                "ticket_count": len(tickets),
+            })
+
+        roi = (total_payout / total_cost * 100) if total_cost > 0 else None
+        settled = [r for r in records if r["payout"] is not None]
+
+    return jsonify({
+        "records": records,
+        "summary": {
+            "total_weeks": len(records),
+            "settled_weeks": len(settled),
+            "total_cost": total_cost,
+            "total_payout": total_payout,
+            "profit": total_payout - total_cost,
+            "roi": round(roi, 1) if roi else None,
+            "hit_count": sum(1 for r in settled if r["hit"]),
+        }
     })
 
 

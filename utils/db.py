@@ -154,5 +154,41 @@ class OddsSnapshot(Base):
     __table_args__ = (UniqueConstraint("race_id", "horse_number", "snapshot_at"),)
 
 
+class BuySession(Base):
+    """週ごとの購入セッション"""
+    __tablename__ = "buy_sessions"
+
+    id         = Column(Integer, primary_key=True)
+    held_date  = Column(String(8), nullable=False)   # "20260614"
+    budget     = Column(Integer)
+    total_cost = Column(Integer)                      # 実際の購入金額
+    payout     = Column(Integer, nullable=True)       # 払戻金額（未入力=None, 外れ=0）
+    note       = Column(String(200))
+    created_at = Column(DateTime, default=datetime.now)
+
+    tickets = relationship("BuyTicket", back_populates="session", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("held_date"),)
+
+
+class BuyTicket(Base):
+    """チケット単位の買い目"""
+    __tablename__ = "buy_tickets"
+
+    id         = Column(Integer, primary_key=True)
+    session_id = Column(Integer, ForeignKey("buy_sessions.id"), nullable=False)
+    ticket_no  = Column(Integer)
+    combos     = Column(Integer)
+    cost       = Column(Integer)
+    # 各スロットの選択馬番（カンマ区切り）
+    slot1 = Column(String(50))  # "1,5,12"
+    slot2 = Column(String(50))
+    slot3 = Column(String(50))
+    slot4 = Column(String(50))
+    slot5 = Column(String(50))
+
+    session = relationship("BuySession", back_populates="tickets")
+
+
 def init_db():
     Base.metadata.create_all(engine)

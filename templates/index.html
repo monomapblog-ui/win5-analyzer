@@ -222,6 +222,8 @@
           <button class="btn" id="move-btn" onclick="loadMovement()" style="width:100%;background:#2a1a40;border:1px solid #5a2a8a;color:#b88ae0;">📊 変動を見る</button>
           <button class="btn" id="select-btn" onclick="loadHorses()" style="width:100%;background:#1a3a5a;border:1px solid #2a5298;color:#8ba3c0;">② 馬を選択</button>
           <button class="btn btn-generate" id="gen-btn" onclick="generate()" style="width:100%;grid-column:span 2;">③ 買い目を生成</button>
+          <button class="btn" onclick="toggleHistory()" style="width:100%;background:#1a1a2e;border:1px solid #2a5298;color:#8ba3c0;">📈 履歴・回収率</button>
+          <button class="btn" onclick="toggleResultInput()" style="width:100%;background:#1a2a0a;border:1px solid #f0a500;color:#f0a500;">🏆 結果を入力</button>
         </div>
       </div>
       <!-- 締切直前ワンボタン -->
@@ -291,6 +293,34 @@
 
     <!-- ステータス -->
     <div id="status" class="status-bar"></div>
+
+    <!-- 履歴・回収率パネル -->
+    <div id="history-panel" style="display:none;background:#1a1a2e;border:1px solid #2a5298;border-radius:12px;padding:16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <span style="font-size:0.9rem;color:#8ba3c0;font-weight:bold;">📈 購入履歴・回収率</span>
+        <button onclick="loadHistory()" style="background:#1a2535;border:1px solid #2a5298;color:#8ba3c0;padding:5px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>
+      </div>
+      <div id="history-summary"></div>
+      <div id="history-records"></div>
+    </div>
+
+    <!-- 結果入力パネル -->
+    <div id="result-input-panel" style="display:none;background:#1a2535;border:1px solid #f0a500;border-radius:12px;padding:16px;margin-bottom:14px;">
+      <div style="font-size:0.9rem;color:#ffd700;font-weight:bold;margin-bottom:12px;">🏆 WIN5結果を入力</div>
+      <div style="font-size:0.75rem;color:#6a88aa;margin-bottom:10px;">各レースの勝ち馬番号を入力してください</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div><label style="font-size:0.75rem;color:#8ba3c0;">R1 勝ち馬番</label><input id="w1" type="number" min="1" max="18" style="width:100%;background:#0f1923;border:1px solid #2a3d55;border-radius:6px;color:#ffd700;padding:8px;font-size:1rem;margin-top:3px;"></div>
+        <div><label style="font-size:0.75rem;color:#8ba3c0;">R2 勝ち馬番</label><input id="w2" type="number" min="1" max="18" style="width:100%;background:#0f1923;border:1px solid #2a3d55;border-radius:6px;color:#ffd700;padding:8px;font-size:1rem;margin-top:3px;"></div>
+        <div><label style="font-size:0.75rem;color:#8ba3c0;">R3 勝ち馬番</label><input id="w3" type="number" min="1" max="18" style="width:100%;background:#0f1923;border:1px solid #2a3d55;border-radius:6px;color:#ffd700;padding:8px;font-size:1rem;margin-top:3px;"></div>
+        <div><label style="font-size:0.75rem;color:#8ba3c0;">R4 勝ち馬番</label><input id="w4" type="number" min="1" max="18" style="width:100%;background:#0f1923;border:1px solid #2a3d55;border-radius:6px;color:#ffd700;padding:8px;font-size:1rem;margin-top:3px;"></div>
+        <div style="grid-column:span 2;"><label style="font-size:0.75rem;color:#8ba3c0;">R5 勝ち馬番</label><input id="w5" type="number" min="1" max="18" style="width:100%;background:#0f1923;border:1px solid #2a3d55;border-radius:6px;color:#ffd700;padding:8px;font-size:1rem;margin-top:3px;"></div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:0.75rem;color:#8ba3c0;">払戻金額（外れは0）</label>
+        <input id="payout-input" type="number" min="0" value="0" style="width:100%;background:#0f1923;border:1px solid #2a3d55;border-radius:6px;color:#2ecc71;padding:8px;font-size:1rem;margin-top:3px;">
+      </div>
+      <button onclick="saveResult()" style="width:100%;padding:12px;background:linear-gradient(135deg,#1a4a1a,#27ae60);border:1px solid #2ecc71;border-radius:8px;color:#fff;font-size:0.95rem;font-weight:bold;cursor:pointer;">✅ 結果を保存</button>
+    </div>
 
     <!-- 結果 -->
     <div id="result">
@@ -746,6 +776,91 @@
       document.getElementById('compact').style.display  = compactMode ? 'block' : 'none';
       document.getElementById('tickets').style.display  = compactMode ? 'none'  : 'block';
       document.getElementById('view-btn').textContent   = compactMode ? '詳細表示' : 'コンパクト表示';
+    }
+
+    // 買い目生成後に自動保存
+    let _lastGeneratedData = null;
+    const _origRenderResult = renderResult;
+    function renderResult(data) {
+      _origRenderResult(data);
+      _lastGeneratedData = data;
+      // 自動保存
+      fetch('/api/save_tickets', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date: data.date, budget: data.budget, total_cost: data.total_cost, tickets: data.tickets}),
+      }).then(r => r.json()).then(d => { if(d.saved) console.log('買い目保存完了'); });
+    }
+
+    function toggleHistory() {
+      const p = document.getElementById('history-panel');
+      if (p.style.display === 'none') { p.style.display = 'block'; loadHistory(); }
+      else p.style.display = 'none';
+    }
+
+    function toggleResultInput() {
+      const p = document.getElementById('result-input-panel');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function loadHistory() {
+      const res = await fetch('/api/history');
+      const data = await res.json();
+      const s = data.summary;
+      const roiColor = (s.roi || 0) >= 100 ? '#2ecc71' : '#e74c3c';
+      document.getElementById('history-summary').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">
+          <div style="background:#0f1923;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:0.7rem;color:#6a88aa;">購入週数</div>
+            <div style="font-size:1.3rem;font-weight:bold;color:#ffd700;">${s.settled_weeks}/${s.total_weeks}週</div>
+          </div>
+          <div style="background:#0f1923;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:0.7rem;color:#6a88aa;">的中回数</div>
+            <div style="font-size:1.3rem;font-weight:bold;color:#ffd700;">${s.hit_count}回</div>
+          </div>
+          <div style="background:#0f1923;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:0.7rem;color:#6a88aa;">総投資額</div>
+            <div style="font-size:1rem;font-weight:bold;color:#e8e8e8;">${s.total_cost.toLocaleString()}円</div>
+          </div>
+          <div style="background:#0f1923;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:0.7rem;color:#6a88aa;">回収率</div>
+            <div style="font-size:1.3rem;font-weight:bold;color:${roiColor};">${s.roi ? s.roi+'%' : '---'}</div>
+          </div>
+        </div>
+        <div style="background:#0f1923;border-radius:8px;padding:10px;text-align:center;margin-bottom:12px;">
+          <div style="font-size:0.7rem;color:#6a88aa;">損益</div>
+          <div style="font-size:1.4rem;font-weight:bold;color:${s.profit>=0?'#2ecc71':'#e74c3c'};">${s.profit>=0?'+':''}${s.profit.toLocaleString()}円</div>
+        </div>`;
+      document.getElementById('history-records').innerHTML = data.records.map(r => {
+        const statusColor = r.payout === null ? '#6a88aa' : r.hit ? '#2ecc71' : '#e74c3c';
+        const statusText = r.payout === null ? '未入力' : r.hit ? `的中 +${r.payout.toLocaleString()}円` : '外れ';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e2840;">
+          <span style="font-size:0.8rem;color:#8ba3c0;">${r.date_label}</span>
+          <span style="font-size:0.8rem;color:#6a88aa;">${r.total_cost.toLocaleString()}円</span>
+          <span style="font-size:0.85rem;font-weight:bold;color:${statusColor};">${statusText}</span>
+        </div>`;
+      }).join('');
+    }
+
+    async function saveResult() {
+      const winners = [1,2,3,4,5].map(i => parseInt(document.getElementById('w'+i).value));
+      if (winners.some(isNaN)) { alert('全レースの勝ち馬番を入力してください'); return; }
+      const payout = parseInt(document.getElementById('payout-input').value) || 0;
+      const date = getDateVal() || (_lastGeneratedData && _lastGeneratedData.date) || '';
+      if (!date) { alert('日付を入力してください'); return; }
+      const res = await fetch('/api/save_result', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date, winners, payout}),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert('エラー: ' + data.error); return; }
+      if (data.hit) {
+        alert(`🎉 的中！ T${data.hit_tickets.join(',')} が当たりました！\n払戻: ${payout.toLocaleString()}円`);
+      } else {
+        alert('残念、外れでした。記録しました。');
+      }
+      document.getElementById('result-input-panel').style.display = 'none';
+      loadHistory();
+      document.getElementById('history-panel').style.display = 'block';
     }
 
     document.addEventListener('keydown', e => { if (e.key === 'Enter') checkWeek(); });
