@@ -109,6 +109,7 @@ class Win5Slot(Base):
     winner_horse_id    = Column(Integer, ForeignKey("horses.id"), nullable=True)
     winner_horse_name  = Column(String(50))
     winner_popularity  = Column(Integer)
+    winner_jockey      = Column(String(50))
 
     event = relationship("Win5Event", back_populates="slots")
     race  = relationship("Race",  back_populates="win5_slot", foreign_keys=[race_id])

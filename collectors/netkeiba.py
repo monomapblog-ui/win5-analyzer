@@ -258,8 +258,8 @@ def fetch_race_result(race_id: str) -> dict:
                 horse_name = a.get_text(strip=True)
                 break
 
-        # 人気・オッズはtable内の列順に依存
         # 一般的な列順: 着順|枠|馬番|馬名|性齢|斤量|騎手|タイム|着差|人気|単勝
+        jockey     = cells[6].get_text(strip=True) if len(cells) > 6  else None
         popularity = _parse_int(cells[9].get_text())  if len(cells) > 9  else None
         odds       = _parse_float(cells[10].get_text()) if len(cells) > 10 else None
 
@@ -269,6 +269,7 @@ def fetch_race_result(race_id: str) -> dict:
             "horse_number":    _parse_int(cells[2].get_text()) if len(cells) > 2 else None,
             "horse_name":      horse_name,
             "horse_id":        horse_id,
+            "jockey":          jockey,
             "popularity":      popularity,
             "odds":            odds,
         })

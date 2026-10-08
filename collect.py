@@ -181,6 +181,7 @@ def _save_race_and_update_popularity(race_id: str, entries: list[dict]):
 
         winner_popularity = None
         winner_horse_id   = None
+        winner_jockey     = None
 
         for e in entries:
             if not e.get("horse_name"):
@@ -217,6 +218,7 @@ def _save_race_and_update_popularity(race_id: str, entries: list[dict]):
             if e.get("finish_position") == 1:
                 winner_popularity = e.get("popularity")
                 winner_horse_id   = horse.id
+                winner_jockey     = e.get("jockey")
 
         session.flush()
 
@@ -230,6 +232,8 @@ def _save_race_and_update_popularity(race_id: str, entries: list[dict]):
                 slot.winner_popularity = winner_popularity
             if winner_horse_id is not None:
                 slot.winner_horse_id = winner_horse_id
+            if winner_jockey is not None:
+                slot.winner_jockey = winner_jockey
 
         session.commit()
         log.info(f"    {race_id} 保存完了（{len(entries)}頭 勝ち馬人気={winner_popularity}）")
