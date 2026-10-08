@@ -75,7 +75,7 @@ def fetch_win5_dates(target_years: list[int] | None = None) -> list[str]:
     for year in years_to_fetch:
         url = f"{BASE}/win5_results.html?year={year}"
         resp = _get(url)
-        soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+        soup = BeautifulSoup(resp.content, "lxml")
 
         for a in soup.find_all("a", href=True):
             m = re.search(r"win5\.html\?date=(\d{8})", a["href"])
@@ -107,7 +107,7 @@ def fetch_win5_by_date(date_str: str) -> dict | None:
     """
     url = f"{BASE}/win5.html?date={date_str}"
     resp = _get(url)
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="utf-8")
 
     # データなし判定
     no_data = soup.find("p", string=re.compile(r"win5データはありません"))
@@ -212,7 +212,7 @@ def fetch_race_result(race_id: str) -> dict:
     """
     url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
     resp = _get(url)
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="utf-8")
 
     entries = []
 
@@ -290,7 +290,7 @@ def fetch_race_features(race_id: str) -> dict:
     """
     url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
     resp = _get(url)
-    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="utf-8")
 
     # ── コース・距離・馬場 ──
     course_type     = None
