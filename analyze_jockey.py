@@ -6,6 +6,8 @@ WIN5 騎手信頼度分析スクリプト
   - 人気帯別（1-2番人気 / 3-5番 / 6番以上）の期待値
   - スロット別の信頼度ランキング
 """
+from __future__ import annotations
+
 
 from collections import defaultdict
 from utils.db import init_db, SessionLocal, Win5Event, Win5Slot

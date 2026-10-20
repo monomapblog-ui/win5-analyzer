@@ -6,6 +6,8 @@
   python collect.py --last 6 --list-only  # 開催一覧のみ（高速・人気不要）
   python collect.py --last 6 --force      # 全データを再取得
 """
+from __future__ import annotations
+
 import argparse
 import logging
 from datetime import date

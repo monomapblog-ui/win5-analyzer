@@ -6,6 +6,7 @@
   WIN5詳細:     https://race.netkeiba.com/top/win5.html?date=YYYYMMDD
   レース結果:   https://race.netkeiba.com/race/result.html?race_id=RACEID
 """
+from __future__ import annotations
 import re
 import time
 import os

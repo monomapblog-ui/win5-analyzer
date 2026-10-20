@@ -2,6 +2,8 @@
 WIN5 スロット別人気分析スクリプト
 各スロット(1-5)の勝ち馬人気の分布・累積勝率・推奨レンジを出力する。
 """
+from __future__ import annotations
+
 
 from collections import defaultdict
 from utils.db import init_db, SessionLocal, Win5Event, Win5Slot

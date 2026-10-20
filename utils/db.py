@@ -1,3 +1,4 @@
+from __future__ import annotations
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Date, DateTime, ForeignKey,
     UniqueConstraint, CheckConstraint,
