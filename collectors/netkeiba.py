@@ -264,6 +264,16 @@ def fetch_race_result(race_id: str) -> dict:
         popularity = _parse_int(cells[9].get_text())  if len(cells) > 9  else None
         odds       = _parse_float(cells[10].get_text()) if len(cells) > 10 else None
 
+        # 騎手ID(古いページでは騎手名が姓のみしか出ないため、IDからフルネームを
+        # 引き直す必要がある。新しいページでも同じIDが振られているので共通で取る)
+        jockey_id = None
+        if len(cells) > 6:
+            a = cells[6].find("a", href=re.compile(r"/jockey/"))
+            if a:
+                m = re.search(r"/jockey/(?:result/recent/)?(\w+)/", a["href"])
+                if m:
+                    jockey_id = m.group(1)
+
         entries.append({
             "finish_position": finish_pos,
             "frame_number":    _parse_int(cells[1].get_text()) if len(cells) > 1 else None,
@@ -271,11 +281,48 @@ def fetch_race_result(race_id: str) -> dict:
             "horse_name":      horse_name,
             "horse_id":        horse_id,
             "jockey":          jockey,
+            "jockey_id":       jockey_id,
             "popularity":      popularity,
             "odds":            odds,
         })
 
     return {"race_id": race_id, "entries": entries}
+
+
+# ─────────────────────────────────────────────
+# 騎手フルネーム解決(古いレース結果ページは姓のみしか出ないため)
+# ─────────────────────────────────────────────
+
+_jockey_name_cache: dict[str, str | None] = {}
+
+
+def fetch_jockey_full_name(jockey_id: str) -> str | None:
+    """
+    騎手IDからdb.netkeiba.comのプロフィールページを引き、フルネーム(漢字)を返す。
+    同じIDは一度だけ取得してキャッシュする。db.netkeiba.comはEUC-JPエンコーディング。
+    """
+    if jockey_id in _jockey_name_cache:
+        return _jockey_name_cache[jockey_id]
+
+    url = f"https://db.netkeiba.com/jockey/{jockey_id}/"
+    try:
+        resp = _get(url)
+    except Exception:
+        _jockey_name_cache[jockey_id] = None
+        return None
+
+    soup = BeautifulSoup(resp.content, "lxml", from_encoding="euc-jp")
+    name_el = soup.find(class_="Name")
+    full_name = None
+    if name_el:
+        h1 = name_el.find("h1")
+        if h1:
+            # 例: "小牧太 \n\t\t    (コマキフトシ)..." → カッコより前がフルネーム
+            text = h1.get_text()
+            full_name = re.split(r"[(（]", text)[0].strip() or None
+
+    _jockey_name_cache[jockey_id] = full_name
+    return full_name
 
 
 # ─────────────────────────────────────────────

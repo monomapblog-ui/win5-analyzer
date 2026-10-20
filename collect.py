@@ -15,7 +15,12 @@ from datetime import date
 from sqlalchemy import select, extract
 
 from utils.db import init_db, SessionLocal, Race, Horse, Entry, Win5Event, Win5Slot
-from collectors.netkeiba import fetch_win5_dates, fetch_win5_by_date, fetch_race_result
+from collectors.netkeiba import (
+    fetch_win5_dates,
+    fetch_win5_by_date,
+    fetch_race_result,
+    fetch_jockey_full_name,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -221,6 +226,13 @@ def _save_race_and_update_popularity(race_id: str, entries: list[dict]):
                 winner_popularity = e.get("popularity")
                 winner_horse_id   = horse.id
                 winner_jockey     = e.get("jockey")
+                # 古いページは騎手名が姓のみのため、IDからフルネームを引けるなら
+                # そちらを優先する(新しいページでも同じ仕組みで名寄せが揃う)
+                jockey_id = e.get("jockey_id")
+                if jockey_id:
+                    full_name = fetch_jockey_full_name(jockey_id)
+                    if full_name:
+                        winner_jockey = full_name
 
         session.flush()
 
