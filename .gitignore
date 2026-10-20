@@ -12,3 +12,4 @@ venv/
 *.egg-info/
 dist/
 build/
+!win5.db
